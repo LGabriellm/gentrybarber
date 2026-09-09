@@ -1,0 +1,22 @@
+{
+  "name": "@platform/notifications",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "bullmq": "6.3.4",
+    "nodemailer": "^7.0.0",
+    "zod": "^4.3.0",
+    "ioredis": "^5.10.0",
+    "@platform/billing": "workspace:*",
+    "@platform/database": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^7.0.0"
+  }
+}

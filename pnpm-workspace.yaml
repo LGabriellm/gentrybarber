@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+overrides:
+  fastify: 5.12.3
+allowBuilds:
+  '@scarf/scarf': false
+  msgpackr-extract: false
+  '@prisma/engines': true
+  esbuild: true
+  sharp: true
+  prisma: true
+  '@nestjs/core': false
+  better-sqlite3: false
+minimumReleaseAgeExclude:
+  - fastify@5.12.3

@@ -1,0 +1,26 @@
+{
+  "name": "@platform/dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --import ../../scripts/load-env.mjs node_modules/next/dist/bin/next dev --port 3001",
+    "build": "next build --webpack",
+    "start": "next start --port 3001",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@platform/booking": "workspace:*",
+    "@platform/types": "workspace:*",
+    "@platform/web-kit": "workspace:*",
+    "@platform/themes": "workspace:*",
+    "@platform/theme-engine": "workspace:*",
+    "@platform/design-system": "workspace:*",
+    "@platform/config": "workspace:*",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwindcss": "^4.1.0",
+    "@tailwindcss/postcss": "^4.1.0"
+  }
+}

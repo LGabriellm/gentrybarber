@@ -1,0 +1,109 @@
+name: Foundation CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, types, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: ci_local_password
+          POSTGRES_DB: platform_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://platform:ci_local_password@localhost:5432/platform_test
+      DATABASE_TEST_URL: postgresql://platform:ci_local_password@localhost:5432/platform_test
+      REDIS_URL: redis://localhost:6379
+      # Ephemeral CI-only value; never used for a deployed environment.
+      BETTER_AUTH_SECRET: ci-only-foundation-secret-with-at-least-thirty-two-characters
+      BETTER_AUTH_URL: http://localhost:4000
+      TRUSTED_ORIGINS: http://localhost:3001,http://localhost:3002
+      API_URL: http://localhost:4000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      PLATFORM_DOMAIN: localhost
+      BIND_HOST: 127.0.0.1
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_FROM: Platform CI <noreply@localhost>
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+          run_install: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate schema and generate Prisma client
+        run: |
+          pnpm --filter @platform/database db:validate
+          pnpm db:generate
+      - name: Apply migrations to isolated test database
+        run: pnpm db:migrate
+      - name: Lint and module boundaries
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: PostgreSQL integration tests
+        run: pnpm test:integration
+      - name: Build workspace
+        run: pnpm build
+      - name: Run compiled API against PostgreSQL
+        run: node scripts/smoke-build.mjs
+      - name: Install Chromium for browser checks
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Browser tests
+        run: pnpm test:e2e
+      - name: Real catalog and booking browser journeys
+        run: pnpm test:e2e:catalog
+      - name: Preserve browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-evidence
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

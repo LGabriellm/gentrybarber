@@ -1,0 +1,83 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
+    "TRUSTED_ORIGINS",
+    "PLATFORM_NAME",
+    "PLATFORM_DOMAIN",
+    "API_URL",
+    "NEXT_PUBLIC_API_URL",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_FROM",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "WHATSAPP_ACCOUNTS_JSON",
+    "WHATSAPP_GRAPH_VERSION",
+    "REDIS_URL",
+    "API_PORT",
+    "BIND_HOST",
+    "TRUST_PROXY_CIDRS",
+    "DEMO_MODE"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^typecheck"
+      ],
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@platform/api#build": {
+      "outputs": ["dist/**"],
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "@platform/worker#build": {
+      "outputs": ["dist/**"],
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "@platform/web-public#build": {
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**"
+      ],
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "@platform/dashboard#build": {
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**"
+      ],
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "@platform/admin#build": {
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**"
+      ],
+      "dependsOn": [
+        "^build"
+      ]
+    }
+  }
+}

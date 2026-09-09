@@ -1,0 +1,1 @@
+{"name":"@platform/auth","private":true,"version":"0.1.0","type":"module","exports":"./src/index.ts","scripts":{"build":"tsc --noEmit","typecheck":"tsc --noEmit"},"dependencies":{"@platform/config":"workspace:*","@platform/database":"workspace:*","@platform/notifications":"workspace:*","better-auth":"1.7.2"}}
