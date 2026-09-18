@@ -13,6 +13,7 @@ echo "$(date -Iseconds) ── Deploy started ──" | tee -a "$LOG_FILE"
 
 # ── 1. Pull latest code ──────────────────────────────────────────
 echo "[1/6] Pulling latest code..."
+git config --global --add safe.directory "$APP_DIR"
 git fetch origin main 2>&1 | tee -a "$LOG_FILE"
 git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 

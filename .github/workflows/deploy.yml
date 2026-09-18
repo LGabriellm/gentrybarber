@@ -57,6 +57,9 @@ jobs:
               cd /opt/barber-platform
             fi
             
+            # Trust the directory to prevent dubious ownership error
+            git config --global --add safe.directory /opt/barber-platform
+            
             # Run normal deployment
             bash infra/vps/deploy.sh
 
