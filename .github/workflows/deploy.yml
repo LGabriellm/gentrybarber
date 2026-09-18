@@ -76,4 +76,4 @@ jobs:
         if: failure()
         run: |
           echo "::error::Deployment to VPS failed! Check the deploy logs on the server."
-          echo "SSH into the VPS and run: docker compose -f compose.production.yaml logs --tail 100"
+          echo "SSH into the VPS and run: docker compose --env-file .env.production -f compose.production.yaml logs --tail 100"

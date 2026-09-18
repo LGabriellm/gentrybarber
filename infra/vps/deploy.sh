@@ -19,15 +19,15 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 
 # ── 2. Build images ──────────────────────────────────────────────
 echo "[2/6] Building Docker images..."
-docker compose -f "$COMPOSE_FILE" build 2>&1 | tee -a "$LOG_FILE"
+docker compose --env-file .env.production -f "$COMPOSE_FILE" build 2>&1 | tee -a "$LOG_FILE"
 
 # ── 3. Run migrations ────────────────────────────────────────────
 echo "[3/6] Running database migrations..."
-docker compose -f "$COMPOSE_FILE" run --rm migrate 2>&1 | tee -a "$LOG_FILE"
+docker compose --env-file .env.production -f "$COMPOSE_FILE" run --rm migrate 2>&1 | tee -a "$LOG_FILE"
 
 # ── 4. Restart services ──────────────────────────────────────────
 echo "[4/6] Restarting services..."
-docker compose -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
+docker compose --env-file .env.production -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
 
 # ── 5. Wait for health ───────────────────────────────────────────
 echo "[5/6] Waiting for services to become healthy..."
@@ -55,7 +55,7 @@ check_health "Admin"          "http://127.0.0.1:3002/api/health"
 if [ "$FAILED" -eq 1 ]; then
   echo ""
   echo "⚠ Some health checks failed. Check logs:"
-  echo "  docker compose -f $COMPOSE_FILE logs --tail 50"
+  echo "  docker compose --env-file .env.production -f $COMPOSE_FILE logs --tail 50"
   echo "$(date -Iseconds) ── Deploy FAILED ──" | tee -a "$LOG_FILE"
   exit 1
 fi
