@@ -17,6 +17,17 @@ git config --global --add safe.directory "$APP_DIR"
 git fetch origin main 2>&1 | tee -a "$LOG_FILE"
 git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 
+if [ ! -f .env.production ]; then
+  echo "==> Creating missing .env.production from template"
+  cp .env.production.example .env.production
+  DB_PASS=$(openssl rand -hex 16)
+  AUTH_SECRET=$(openssl rand -hex 32)
+  sed -i "s/CHANGE_ME_STRONG_PASSWORD_HERE/$DB_PASS/g" .env.production
+  sed -i "s/CHANGE_ME_AT_LEAST_32_CHARS/$AUTH_SECRET/g" .env.production
+  # Set dummy values for empty required fields to pass validation initially
+  sed -i "s/SMTP_HOST=/SMTP_HOST=localhost/g" .env.production
+fi
+
 # ── 2. Build images ──────────────────────────────────────────────
 echo "[2/6] Building Docker images..."
 docker compose --env-file .env.production -f "$COMPOSE_FILE" build 2>&1 | tee -a "$LOG_FILE"

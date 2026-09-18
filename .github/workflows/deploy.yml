@@ -32,33 +32,20 @@ jobs:
           script: |
             set -euo pipefail
             
-            # Initial Setup (First Run Only)
-            if [ ! -d "/opt/barber-platform" ]; then
-              echo "==> First time deployment detected! Setting up VPS..."
-              
-              # 1. Clone repository
-              git clone https://github.com/LGabriellm/gentrybarber.git /opt/barber-platform
-              cd /opt/barber-platform
-              
-              # 2. Run the setup script (installs docker, caddy, swap, etc)
-              bash infra/vps/setup-vps.sh || echo "⚠ Some setup steps failed, but continuing..."
-              
-              # 3. Create .env.production
-              cp .env.production.example .env.production
-              
-              # Generate real secrets for the environment
-              DB_PASS=$(openssl rand -hex 16)
-              AUTH_SECRET=$(openssl rand -hex 32)
-              sed -i "s/CHANGE_ME_STRONG_PASSWORD_HERE/$DB_PASS/g" .env.production
-              sed -i "s/CHANGE_ME_AT_LEAST_32_CHARS/$AUTH_SECRET/g" .env.production
-              
-              echo "==> Initial setup completed successfully."
-            else
-              cd /opt/barber-platform
-            fi
-            
             # Trust the directory to prevent dubious ownership error
             git config --global --add safe.directory /opt/barber-platform
+            
+            # Initial Setup checks
+            if [ ! -d "/opt/barber-platform" ]; then
+              echo "==> First time deployment detected! Cloning repository..."
+              git clone https://github.com/LGabriellm/gentrybarber.git /opt/barber-platform
+            fi
+            
+            cd /opt/barber-platform
+            
+            # Always run the setup script to ensure server dependencies (swap, ufw, caddy)
+            # It's idempotent so it won't break if run multiple times.
+            bash infra/vps/setup-vps.sh || echo "⚠ Some setup steps failed, but continuing..."
             
             # Run normal deployment
             bash infra/vps/deploy.sh
