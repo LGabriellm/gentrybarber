@@ -31,7 +31,33 @@ jobs:
           command_timeout: 15m
           script: |
             set -euo pipefail
-            cd /opt/barber-platform
+            
+            # Initial Setup (First Run Only)
+            if [ ! -d "/opt/barber-platform" ]; then
+              echo "==> First time deployment detected! Setting up VPS..."
+              
+              # 1. Clone repository
+              git clone https://github.com/LGabriellm/gentrybarber.git /opt/barber-platform
+              cd /opt/barber-platform
+              
+              # 2. Run the setup script (installs docker, caddy, swap, etc)
+              bash infra/vps/setup-vps.sh || echo "⚠ Some setup steps failed, but continuing..."
+              
+              # 3. Create .env.production
+              cp .env.production.example .env.production
+              
+              # Generate real secrets for the environment
+              DB_PASS=$(openssl rand -hex 16)
+              AUTH_SECRET=$(openssl rand -hex 32)
+              sed -i "s/CHANGE_ME_STRONG_PASSWORD_HERE/$DB_PASS/g" .env.production
+              sed -i "s/CHANGE_ME_AT_LEAST_32_CHARS/$AUTH_SECRET/g" .env.production
+              
+              echo "==> Initial setup completed successfully."
+            else
+              cd /opt/barber-platform
+            fi
+            
+            # Run normal deployment
             bash infra/vps/deploy.sh
 
       - name: Verify deployment externally

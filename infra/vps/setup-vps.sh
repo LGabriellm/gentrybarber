@@ -31,11 +31,7 @@ else
   echo "  → User '$DEPLOY_USER' already exists, skipping."
 fi
 
-# ── 3. SSH hardening ─────────────────────────────────────────────
-echo "[3/8] Hardening SSH..."
-sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-systemctl reload sshd || systemctl reload ssh
+
 
 # ── 4. Firewall ──────────────────────────────────────────────────
 echo "[4/8] Configuring UFW firewall..."
