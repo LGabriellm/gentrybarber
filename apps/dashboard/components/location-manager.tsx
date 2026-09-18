@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { LocationItem, LocationCatalog, CreateLocationInput, UpdateLocationInput } from '@platform/types';
+import { maskPhone, parsePhone } from '@platform/web-kit';
 
 type Input = CreateLocationInput | UpdateLocationInput;
 type Feedback = { text: string; error: boolean; conflict?: boolean; signIn?: boolean } | null;
@@ -140,24 +141,25 @@ function LocationEditor({ entry, disabled, onInvalid, onSave }: {
     if (disabled) return;
     const form = new FormData(event.currentTarget);
     const name = String(form.get('name') || '').trim();
-    const phone = String(form.get('phone') || '').trim();
+    const phoneRaw = String(form.get('phone') || '').trim();
+    const phone = phoneRaw ? parsePhone(phoneRaw) : '';
     const city = String(form.get('city') || '').trim();
     const state = String(form.get('state') || '').trim();
     const active = form.get('active') === 'on';
 
     if (!name || name.length > 120) { onInvalid('Informe um nome com até 120 caracteres.'); return; }
     
-    const address = { city, state };
+    const address = { ...entry?.address, city, state };
     const identity = entry ? { expectedVersion: entry.version } : {};
 
     await onSave({ name, address, phone: phone || null, active, ...identity }, entry);
   }
 
-  return <form className="catalog-form" onSubmit={submit}>
+  return <form className="catalog-form" noValidate onSubmit={submit}>
     <fieldset disabled={disabled} className="catalog-fields">
       <div className="catalog-form-grid">
         <label className="catalog-field" htmlFor={`${idPrefix}-name`}>Nome da Unidade<input id={`${idPrefix}-name`} name="name" defaultValue={entry?.name || ''} required maxLength={120} autoComplete="off" /></label>
-        <label className="catalog-field" htmlFor={`${idPrefix}-phone`}>Telefone<input id={`${idPrefix}-phone`} name="phone" defaultValue={entry?.phone || ''} maxLength={20} autoComplete="tel" /></label>
+        <label className="catalog-field" htmlFor={`${idPrefix}-phone`}>Telefone<input id={`${idPrefix}-phone`} name="phone" defaultValue={entry?.phone ? maskPhone(entry.phone) : ''} maxLength={15} placeholder="(11) 99999-9999" autoComplete="tel" onInput={(e) => { e.currentTarget.value = maskPhone(e.currentTarget.value); }} /></label>
         <label className="catalog-field" htmlFor={`${idPrefix}-city`}>Cidade<input id={`${idPrefix}-city`} name="city" defaultValue={entry?.address?.city || ''} maxLength={60} autoComplete="address-level2" /></label>
         <label className="catalog-field" htmlFor={`${idPrefix}-state`}>Estado (UF)<input id={`${idPrefix}-state`} name="state" defaultValue={entry?.address?.state || ''} maxLength={2} autoComplete="address-level1" /></label>
       </div>

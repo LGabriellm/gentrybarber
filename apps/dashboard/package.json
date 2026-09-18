@@ -17,6 +17,7 @@
     "@platform/theme-engine": "workspace:*",
     "@platform/design-system": "workspace:*",
     "@platform/config": "workspace:*",
+    "@platform/ui": "workspace:*",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",

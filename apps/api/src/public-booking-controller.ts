@@ -31,6 +31,18 @@ export class PublicBookingController {
     return this.services.booking.getPublicAvailability(tenantId, restQuery);
   }
 
+  @Get('/options')
+  async options(@Query() query: unknown) {
+    const { hostname } = z.object({ hostname: z.string().min(1).max(260) }).strict().parse(query);
+    const tenantId = await this.authorizePublic(hostname);
+    const [locations, services, professionals] = await Promise.all([
+      this.services.db.location.findMany({ where: { tenantId, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, timezone: true } }),
+      this.services.db.service.findMany({ where: { tenantId, active: true, location: { active: true } }, orderBy: { name: 'asc' }, select: { id: true, locationId: true, name: true, priceCents: true, durationMinutes: true } }),
+      this.services.db.professional.findMany({ where: { tenantId, active: true, location: { active: true } }, orderBy: { name: 'asc' }, select: { id: true, locationId: true, name: true, services: { where: { tenantId, service: { active: true } }, select: { serviceId: true } } } }),
+    ]);
+    return { locations, services, professionals: professionals.map(person => ({ id: person.id, locationId: person.locationId, name: person.name, serviceIds: person.services.map(service => service.serviceId) })) };
+  }
+
   @Post('/appointments')
   async createAppointment(@Body() body: Record<string, unknown>, @Req() request: FastifyRequest) {
     z.object({}).strict().parse(request.query);

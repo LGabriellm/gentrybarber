@@ -40,16 +40,8 @@ export class SmtpEmailProvider implements NotificationProvider {
 
 export class ConsoleEmailProvider implements NotificationProvider {
   async send(input: EmailMessage): Promise<void> {
-    const message = emailJobSchema.parse(input);
-    console.log('\n=================== MOCK EMAIL ===================');
-    console.log(`To: ${message.to}`);
-    console.log(`Subject: ${message.subject}`);
-    console.log('--------------------------------------------------');
-    console.log(message.text);
-    console.log('==================================================\n');
+    emailJobSchema.parse(input);
+    console.info(JSON.stringify({ event: 'notification.email_simulated', delivered: false }));
   }
   close(): void {}
 }
-
-export * from './whatsapp';
-export * from './whatsapp-outbox';

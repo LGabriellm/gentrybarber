@@ -8,7 +8,7 @@ Better Auth gerencia login, logout, sessão, verificação de e-mail e recupera�
 
 Memberships da aplicação determinam acesso ao tenant. Roles previstas são OWNER, MANAGER, RECEPTIONIST e BARBER, com permissões explícitas como `website.manage`, `team.manage` e `billing.read`. SUPER_ADMIN é uma autoridade de plataforma separada; não transformar um role nomeado pelo tenant em acesso global. Ações privilegiadas precisam de auditoria e escopo explícito.
 
-2FA, passkeys e OAuth são preparação futura; não anunciar esses mecanismos como habilitados. Antes de produção, validar os fluxos de reset/verificação, expiração, revogação e proteção contra enumeração com o provider configurado.
+2FA, passkeys e OAuth são preparação futura; não anunciar esses mecanismos como habilitados. Antes de produção, validar os fluxos de reset/verificação de e-mail, expiração, revogação e proteção contra enumeração com o provider configurado. A reserva pública não verifica a posse do telefone; limitar e acompanhar abuso por IP e destino antes de ampliar a operação.
 
 A versão instalada de Better Auth vincula contas externas pela chave composta `(issuer, accountId)`. A migration incremental preserva contas de senha com issuer `local:credential` e exige mapeamento explícito de provedores legados externos. Não inferir equivalência de identidade apenas pelo nome de provider ou e-mail.
 
@@ -23,7 +23,7 @@ O cadastro público não grava `platformRole` nem cria memberships. O comando `p
 | CSRF e CORS | Usar proteção de origem do auth, política de cookies e validar operações com credenciais. |
 | Host spoofing | Normalização, registro de domínio e proxy confiável; não confiar em headers encaminhados arbitrários. |
 | XSS em conteúdo/tema | Sem HTML/JS livre, escapes de renderização, URLs validadas e CSP compatível. |
-| Brute force/abuso | Rate limiting nas rotas expostas; limites distribuídos precisam ser configurados para múltiplas instâncias. |
+| Brute force/abuso | Rate limiting atômico no Redis compartilhado entre réplicas, com TTL e falha fechada; autenticação também usa PostgreSQL. Proxy e namespace conforme DEPLOYMENT.md. |
 | Secrets/dados pessoais | Secrets por ambiente; logs estruturados com redação, sem senha, token ou payload de cliente. |
 | Arquivos maliciosos | Antes de uploads produtivos: MIME real, tamanho, extensão, dimensões, URLs assinadas e escopo do objeto. |
 | Webhook forjado/repetido | Adapter, assinatura, vínculo externo, idempotência e audit log; fluxo futuro de billing. |

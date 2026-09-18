@@ -7,10 +7,11 @@ import { formatPrice } from '../lib/catalog-format';
 import { BookingFeedback } from './booking-common';
 import type { BookingMessage } from './booking-common';
 import { CustomerPicker } from './booking-customer';
+import { bookingSelection } from '@platform/web-kit';
 
 export function CreateBooking({ slug, location, options, initialDate, access, onSaved, onLock }: { slug: string; location: BookingLocation; options: BookingOptions; initialDate: string; access: BookingAccess; onSaved: (appointment: AppointmentView) => void; onLock: (locked: boolean) => void }) {
   const [serviceIds, setServiceIds] = useState<string[]>([]);
-  const [professionalId, setProfessionalId] = useState('');
+  const [professionalChoice, setProfessionalId] = useState('');
   const [date, setDate] = useState(initialDate);
   const [customer, setCustomer] = useState<CustomerView | null>(null);
   const [notes, setNotes] = useState('');
@@ -22,12 +23,13 @@ export function CreateBooking({ slug, location, options, initialDate, access, on
   const [message, setMessage] = useState<BookingMessage | null>(null);
   const services = options.services.filter(service => service.locationId === location.id && service.active);
   const professionals = options.professionals.filter(professional => professional.locationId === location.id && professional.active && serviceIds.every(id => professional.serviceIds.includes(id)));
+  const professionalId = bookingSelection(professionals, professionalChoice);
   const locked = busy || uncertain;
   function resetSlots() { setAvailability(null); setStartsAt(''); setMessage(null); }
 
   async function findSlots() {
     if (locked) return;
-    if (!professionalId || !serviceIds.length || serviceIds.length > 10 || !date) { setMessage({ text: 'Selecione de 1 a 10 serviços, um profissional e a data.', error: true }); return; }
+    if (!professionalId || !serviceIds.length || serviceIds.length > 10 || !date) { setMessage({ text: 'Escolha os serviços e a data. Se houver mais de um profissional disponível, escolha quem fará o atendimento.', error: true }); return; }
     setBusy(true); setMessage(null); setStartsAt(''); setAvailability(null); onLock(true);
     try { setAvailability(await operation<AvailabilityView>(slug, `availability?${new URLSearchParams({ locationId: location.id, professionalId, serviceIds: [...serviceIds].sort().join(','), date })}`)); }
     catch (error) { setMessage({ text: error instanceof Error ? error.message : 'Não foi possível consultar os horários.', error: true, signIn: error instanceof OperationError && error.status === 401 }); }
@@ -57,7 +59,7 @@ export function CreateBooking({ slug, location, options, initialDate, access, on
     <BookingFeedback message={message} />
     <fieldset className="catalog-fields" disabled={locked}>
       <fieldset className="catalog-services"><legend>Serviços do agendamento</legend><p>Selecione até 10 serviços realizados pelo mesmo profissional.</p><div className="catalog-service-options">{services.map(service => <label key={service.id} className="catalog-checkbox"><input type="checkbox" checked={serviceIds.includes(service.id)} disabled={!serviceIds.includes(service.id) && serviceIds.length >= 10} onChange={event => { setServiceIds(previous => event.target.checked ? [...previous, service.id] : previous.filter(id => id !== service.id)); setProfessionalId(''); resetSlots(); }} />{service.name} · {service.durationMinutes} min · {formatPrice(service.priceCents)}</label>)}</div>{!services.length && <p>Nenhum serviço ativo disponível nesta unidade.</p>}</fieldset>
-      <div className="catalog-form-grid"><label className="catalog-field">Profissional do agendamento<select value={professionalId} onChange={event => { setProfessionalId(event.target.value); resetSlots(); }}><option value="">Selecione um profissional</option>{professionals.map(professional => <option key={professional.id} value={professional.id}>{professional.name}</option>)}</select>{serviceIds.length > 0 && !professionals.length && <small>Nenhum profissional ativo realiza todos os serviços selecionados.</small>}</label><label className="catalog-field">Data do agendamento<input type="date" value={date} min={localDate(location.timezone)} onChange={event => { setDate(event.target.value); resetSlots(); }} /></label></div>
+      <div className="catalog-form-grid">{professionals.length > 1 ? <label className="catalog-field">Profissional do agendamento<select value={professionalId} onChange={event => { setProfessionalId(event.target.value); resetSlots(); }}><option value="">Selecione um profissional</option>{professionals.map(professional => <option key={professional.id} value={professional.id}>{professional.name}</option>)}</select>{serviceIds.length > 0 && !professionals.length && <small>Nenhum profissional ativo realiza todos os serviços selecionados.</small>}</label> : professionals[0] ? <p className="booking-choice-summary">Atendimento com <strong>{professionals[0].name}</strong></p> : <p role="status">Nenhum profissional ativo realiza os serviços selecionados. Confira o cadastro de serviços e profissionais.</p>}<label className="catalog-field">Data do agendamento<input type="date" value={date} min={localDate(location.timezone)} onChange={event => { setDate(event.target.value); resetSlots(); }} /></label></div>
       <button type="button" className="button secondary" onClick={findSlots} disabled={!serviceIds.length || !professionalId || !date}>Consultar horários</button>
       {availability && <section className="booking-slots"><h3>Horários disponíveis</h3><p>{availability.durationMinutes} minutos · Total {formatPrice(availability.totalCents)} · {availability.timezone}</p>{availability.slots.length ? <div className="booking-slot-grid">{availability.slots.map(slot => <label key={slot.startsAt} className={`booking-slot ${startsAt === slot.startsAt ? 'booking-option-selected' : ''}`}><input type="radio" name="booking-slot" value={slot.startsAt} checked={startsAt === slot.startsAt} onChange={() => setStartsAt(slot.startsAt)} /><span>{appointmentTime(slot.startsAt, availability.timezone)}<small>até {appointmentTime(slot.endsAt, availability.timezone)}</small></span></label>)}</div> : <p className="notice">Não há horários livres nesta data. Escolha outra data ou revise a escala e os bloqueios da equipe.</p>}</section>}
     </fieldset>

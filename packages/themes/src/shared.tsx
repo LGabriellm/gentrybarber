@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
-import { tokensToCssVariables, resolveDesignTokens, type DesignTokens } from "@platform/design-system";
+import { tokensToCssVariables, resolveDesignTokens, type DesignTokens, designSystemCss } from "@platform/design-system";
 import type { PublicSiteData } from "@platform/theme-engine";
 import { Container } from "@platform/ui";
+import { MapEmbed } from "@platform/design-system";
 
 const css = `
 .theme-site{background:var(--theme-background);color:var(--theme-text);font-family:var(--theme-body-font);line-height:1.5;overflow:hidden}
@@ -26,12 +27,34 @@ const css = `
 @media(max-width:800px){.theme-site .theme-grid{grid-template-columns:1fr;gap:38px}.theme-site .theme-grid-three{grid-template-columns:repeat(2,1fr);gap:24px}.theme-site .contact-grid{grid-template-columns:1fr 1fr}.theme-site .art-frame{min-height:360px}.theme-site .site-links{gap:18px}.theme-imperial .site-links{position:static}.theme-imperial .site-nav{justify-content:space-between}.theme-imperial .imperial-hero{padding:60px 0}.theme-site .hero-heading{overflow-wrap:normal}}
 @media(max-width:480px){.theme-site .site-nav{min-height:82px;align-items:flex-start;flex-direction:column;padding:20px 0;gap:20px}.theme-site .site-brand{font-size:23px}.theme-site .theme-grid-three,.theme-site .contact-grid{grid-template-columns:1fr}.theme-site .site-footer{flex-direction:column;gap:12px}.theme-site .site-links{gap:22px;font-size:11px}.theme-site .art-frame{min-height:300px}.theme-site .hero-heading{font-size:3.4rem}.theme-urban .hero-heading{font-size:4.3rem}.theme-imperial .site-nav{align-items:center}.theme-imperial .imperial-frame{padding:20px}.theme-site .hero-link{margin-top:16px}}
 @media(prefers-reduced-motion:reduce){.theme-site *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+/* Rich Footer */
+.site-footer-rich{border-top:1px solid color-mix(in srgb,currentColor 12%,transparent);padding:60px 0 0}
+.footer-rich-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:40px}
+.footer-rich-brand{max-width:300px}
+.footer-rich-name{font-family:var(--theme-heading-font);font-size:22px;font-weight:600;display:block;margin-bottom:12px}
+.footer-rich-desc{font-size:14px;line-height:1.7;opacity:.7;margin:0}
+.footer-rich-label{font-size:11px;letter-spacing:.15em;text-transform:uppercase;opacity:.5;margin:0 0 16px;font-weight:600}
+.footer-rich-nav{display:flex;flex-direction:column;gap:10px;font-size:14px}
+.footer-rich-nav a{padding:4px 0}
+.footer-rich-nav a:hover{opacity:.7}
+.footer-rich-bottom{display:flex;justify-content:space-between;gap:24px;padding:28px 0;margin-top:40px;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent);font-size:12px;opacity:.6;text-transform:uppercase;letter-spacing:.08em}
+
+/* WhatsApp Float */
+.whatsapp-float{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:#25D366;color:#fff;display:grid;place-items:center;z-index:40;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:transform .3s ease}
+.whatsapp-float:hover{transform:scale(1.1)}
+
+/* ScrollReveal */
+.scroll-reveal{animation:revealFade linear both;animation-timeline:view();animation-range:entry 0% entry 30%}
+@keyframes revealFade{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@supports not (animation-timeline:view()){.scroll-reveal{opacity:1;transform:none}}
 `;
 
 export function ThemeShell({ data, defaults, variant, children }: { data: PublicSiteData; defaults: DesignTokens; variant: "classic" | "urban" | "imperial"; children: ReactNode }) {
   const tokens = resolveDesignTokens(data.tokens ?? {}, defaults);
   return <div className={`theme-site theme-${variant}`} data-theme={variant} style={tokensToCssVariables(tokens) as CSSProperties}>
-    <style>{css}</style>{children}
+    <style>{css + designSystemCss}</style>{children}
+    {!data.whiteLabel && <div style={{ textAlign: 'center', padding: '16px', fontSize: '11px', opacity: 0.5, borderTop: '1px solid color-mix(in srgb, currentColor 10%, transparent)' }}>Desenvolvido por <strong>GentryHub</strong> - Soluções Digitais</div>}
   </div>;
 }
 
@@ -46,11 +69,18 @@ export function SiteNavigation({ data }: { data: PublicSiteData }) {
 export function SiteContact({ data }: { data: PublicSiteData }) {
   const { tenant } = data;
   const phone = tenant.contact.phone?.replace(/[^0-9+]/g, "");
-  return <section id="contato" className="section-rule" style={{ padding: "var(--theme-space) 0" }}><Container><div className="contact-grid">
-    <div><p className="small-label">Esperamos você</p><h2 style={{ fontFamily: "var(--theme-heading-font)", fontWeight: 400, fontSize: 32, lineHeight: 1.2, margin: 0 }}>{tenant.name}</h2></div>
-    <div><p className="small-label">Onde estamos</p><address>{tenant.location.address}<br />{tenant.location.city} · {tenant.location.state}</address></div>
-    <div><p className="small-label">Contato</p>{phone && <p style={{ margin: "0 0 8px", fontSize: 14 }}><a href={`tel:${phone}`}>{tenant.contact.phone}</a></p>}{tenant.contact.email && <a style={{ fontSize: 13, overflowWrap: "anywhere" }} href={`mailto:${encodeURIComponent(tenant.contact.email)}`}>{tenant.contact.email}</a>}{!phone && !tenant.contact.email && <p style={{ fontSize: 14 }}>Conheça nosso espaço.</p>}</div>
-  </div></Container></section>;
+  return <section id="contato" className="section-rule" style={{ padding: "var(--theme-space) 0" }}><Container>
+    <div className="contact-grid">
+      <div><p className="small-label">Esperamos você</p><h2 style={{ fontFamily: "var(--theme-heading-font)", fontWeight: 400, fontSize: 32, lineHeight: 1.2, margin: 0 }}>{tenant.name}</h2></div>
+      <div><p className="small-label">Onde estamos</p><address>{tenant.location.address}<br />{tenant.location.city} · {tenant.location.state}</address></div>
+      <div><p className="small-label">Contato</p>{phone && <p style={{ margin: "0 0 8px", fontSize: 14 }}><a href={`tel:${phone}`}>{tenant.contact.phone}</a></p>}{tenant.contact.email && <a style={{ fontSize: 13, overflowWrap: "anywhere" }} href={`mailto:${encodeURIComponent(tenant.contact.email)}`}>{tenant.contact.email}</a>}{!phone && !tenant.contact.email && <p style={{ fontSize: 14 }}>Conheça nosso espaço.</p>}</div>
+    </div>
+    {tenant.location.mapUrl && (
+      <div style={{ marginTop: "clamp(30px, 5vw, 60px)" }}>
+        <MapEmbed url={tenant.location.mapUrl} title={`Localização: ${tenant.name}`} />
+      </div>
+    )}
+  </Container></section>;
 }
 
 export function SiteFooter({ data }: { data: PublicSiteData }) {
@@ -92,4 +122,57 @@ export function ScissorsArt() {
 
 export function ImperialMark() {
   return <svg width="78" height="72" viewBox="0 0 78 72" fill="none" aria-hidden="true"><path d="M15 45 9 20l20 13 10-23 10 23 20-13-6 25H15Zm0 7h48M19 59h40" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="17" r="3" stroke="currentColor" /><circle cx="39" cy="7" r="3" stroke="currentColor" /><circle cx="69" cy="17" r="3" stroke="currentColor" /></svg>;
+}
+
+export function SiteFooterRich({ data }: { data: PublicSiteData }) {
+  const { tenant } = data;
+  const phone = tenant.contact.phone?.replace(/[^0-9+]/g, '');
+  return <footer className="site-footer-rich">
+    <Container>
+      <div className="footer-rich-grid">
+        <div className="footer-rich-brand">
+          <span className="footer-rich-name">{tenant.name}</span>
+          <p className="footer-rich-desc">{tenant.description}</p>
+        </div>
+        <div>
+          <p className="footer-rich-label">Navegação</p>
+          <nav className="footer-rich-nav">
+            <a href="#inicio">Início</a>
+            {!!data.services?.length && <a href="#servicos">Serviços</a>}
+            {!!data.professionals?.length && <a href="#equipe">Equipe</a>}
+            <a href="#contato">Contato</a>
+          </nav>
+        </div>
+        <div>
+          <p className="footer-rich-label">Endereço</p>
+          <address style={{ fontStyle: 'normal', fontSize: 14, lineHeight: 1.7 }}>
+            {tenant.location.address}<br />
+            {tenant.location.city} · {tenant.location.state}
+          </address>
+        </div>
+        <div>
+          <p className="footer-rich-label">Contato</p>
+          {phone && <p style={{ margin: '0 0 8px', fontSize: 14 }}><a href={`tel:${phone}`}>{tenant.contact.phone}</a></p>}
+          {tenant.contact.email && <p style={{ margin: 0, fontSize: 13 }}><a href={`mailto:${encodeURIComponent(tenant.contact.email)}`}>{tenant.contact.email}</a></p>}
+        </div>
+      </div>
+      <div className="footer-rich-bottom">
+        <span>{tenant.name} · {tenant.location.city}</span>
+        <a href="#inicio">Voltar ao início ↑</a>
+      </div>
+    </Container>
+  </footer>;
+}
+
+export function WhatsAppFloat({ phone }: { phone?: string }) {
+  if (!phone) return null;
+  const clean = phone.replace(/\D/g, '');
+  if (!/^\d{10,15}$/.test(clean)) return null;
+  return <a className="whatsapp-float" href={`https://wa.me/${clean}`} target="_blank" rel="noopener noreferrer" aria-label="Conversar com a barbearia pelo WhatsApp" title="Conversar pelo WhatsApp">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+  </a>;
+}
+
+export function ScrollReveal({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={`scroll-reveal ${className || ''}`}>{children}</div>;
 }

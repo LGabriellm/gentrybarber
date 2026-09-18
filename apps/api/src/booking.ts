@@ -3,7 +3,6 @@ import type { Prisma, PrismaClient } from '@platform/database';
 import { requirePermission } from '@platform/tenancy';
 import { addCalendarDays, assertWeeklyWindows, availableSlots, calendarDay, canTransition, intervalFits, isCalendarDate, localDate, occupyingStatuses, workingIntervals, type CalendarDay, type TimeRange } from '@platform/booking';
 import { AccessError, type AppointmentDay, type AppointmentView, type AvailabilityView, type BookingOptions, type CustomerView, type PermissionKey, type ScheduleView, type TenantContext, type TimeOffView } from '@platform/types';
-import { enqueueWhatsAppConfirmation } from '@platform/notifications';
 import { z } from 'zod';
 
 const minuteMs = 60_000;
@@ -37,10 +36,10 @@ const publicAppointmentInput = z.object({
   startsAt: instant,
   notes: z.string().max(2000).nullable().optional(),
   idempotencyKey: id,
-  customer: z.object(customerFields).strict(),
+  customer: z.object({ ...customerFields, whatsappOptIn: z.boolean().default(false) }).strict(),
 }).strict();
 
-const customerQuery = z.object({ q: z.string().trim().max(80).default('') }).strict();
+const customerQuery = z.object({ q: z.string().trim().max(80).default(''), page: z.coerce.number().int().min(1).max(100000).default(1) }).strict();
 const availabilityQuery = z.object({
   locationId: id, professionalId: id, date,
   serviceIds: z.string().max(1_289).transform(value => serviceIdsSchema.parse(value.split(','))), appointmentId: id.optional(),
@@ -245,14 +244,14 @@ export class BookingService {
     });
   }
 
-  async listCustomers(context: TenantContext, query: unknown): Promise<{ items: CustomerView[] }> {
+  async listCustomers(context: TenantContext, query: unknown): Promise<{ items: CustomerView[]; page: number; hasMore: boolean }> {
     authorize(context, 'customers.read');
-    const { q } = customerQuery.parse(query);
+    const { q, page } = customerQuery.parse(query);
     const items = await this.db.customer.findMany({
       where: { tenantId: context.tenant.id, ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }, { email: { contains: q, mode: 'insensitive' as const } }] } : {}) },
-      select: customerSelect, take: 50, orderBy: [...byName],
+      select: customerSelect, skip: (page - 1) * 50, take: 51, orderBy: [...byName],
     });
-    return { items: items.map(customerView) };
+    return { items: items.slice(0, 50).map(customerView), page, hasMore: items.length > 50 };
   }
 
   async createCustomer(context: TenantContext, input: unknown): Promise<CustomerView> {
@@ -378,7 +377,6 @@ export class BookingService {
       await tx.appointmentService.createMany({ data: offering.services.map(service => ({ ...service, tenantId, locationId: fields.locationId, appointmentId: created.id })) });
       await tx.appointmentEvent.create({ data: { tenantId, locationId: fields.locationId, appointmentId: created.id, actorUserId: context.userId, fromStatus: null, toStatus: 'CONFIRMED' } });
       await audit(tx, context, 'appointment.created', 'Appointment', created.id);
-      await enqueueWhatsAppConfirmation(tx, tenantId, created.id);
       
 
       
@@ -409,7 +407,6 @@ export class BookingService {
       if (result.count !== 1) throw new AccessError('CONFLICT');
       await tx.appointmentEvent.create({ data: { tenantId, locationId: current.locationId, appointmentId: resourceId, actorUserId: context.userId, fromStatus: current.status, toStatus: current.status, reason: 'Reagendamento' } });
       await audit(tx, context, 'appointment.rescheduled', 'Appointment', resourceId);
-      await enqueueWhatsAppConfirmation(tx, tenantId, resourceId);
       return appointmentView(await findAppointment(tx, tenantId, resourceId));
     });
   }
@@ -462,10 +459,11 @@ export class BookingService {
       
       const offering = await this.offering(tx, tenantId, fields.locationId, fields.professionalId, fields.serviceIds);
       
-      let customer = await tx.customer.findFirst({ where: { tenantId, phone: fields.customer.phone }, select: { id: true } });
+      let customer = await tx.customer.findFirst({ where: { tenantId, phone: fields.customer.phone }, select: { id: true, whatsappOptInAt: true } });
       if (!customer) {
-        customer = await tx.customer.create({ data: { tenantId, name: fields.customer.name, phone: fields.customer.phone, email: fields.customer.email, notes: fields.customer.notes }, select: { id: true } });
+        customer = await tx.customer.create({ data: { tenantId, name: fields.customer.name, phone: fields.customer.phone, email: fields.customer.email, notes: fields.customer.notes, whatsappOptInAt: fields.customer.whatsappOptIn ? this.now() : null }, select: { id: true, whatsappOptInAt: true } });
       }
+      // A public phone number does not prove identity or authorize changes to an existing customer's consent.
       
       const availability = await this.slots(tx, tenantId, fields.professionalId, offering, localDate(fields.startsAt, offering.location.timezone));
       const slot = availability.slots.find(item => item.startsAt === fields.startsAt.toISOString());
@@ -482,7 +480,6 @@ export class BookingService {
       
       await audit(tx, { tenantId, actorUserId: null }, 'appointment.created', 'Appointment', created.id);
       
-
       
       return publicReceipt(await findAppointment(tx, tenantId, created.id));
     });

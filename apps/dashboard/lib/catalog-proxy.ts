@@ -1,5 +1,6 @@
 const resources = new Set(['services', 'professionals', 'locations']);
 const headers = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
+import { logger } from '@platform/config';
 
 export interface CatalogRouteParams { slug: string; resource: string; id?: string[] }
 
@@ -36,8 +37,9 @@ export async function readCatalogBody(request: Request): Promise<{ body: string 
     const body = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, length));
     JSON.parse(body);
     return { body };
-  } catch {
+  } catch (err) {
     cancel?.();
+    logger.error('Failed to read or parse catalog body', err);
     return { response: error(400, 'Dados inválidos.') };
   } finally {
     if (cancel) request.signal.removeEventListener('abort', cancel);
@@ -54,8 +56,11 @@ export async function proxyCatalog(request: Request, params: CatalogRouteParams)
   if ((!write && request.method !== 'GET') || (request.method === 'PATCH' ? id.length !== 1 : id.length !== 0)) {
     return error(405, 'Método não permitido.');
   }
-  if (new URL(request.url).search) return error(400, 'Parâmetros não previstos.');
-  if (write && request.headers.get('origin') !== new URL(request.url).origin) {
+  const incoming = new URL(request.url);
+  if (incoming.search) return error(400, 'Parâmetros não previstos.');
+  const proto = request.headers.get('x-forwarded-proto') || incoming.protocol.replace(':', '');
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || incoming.host;
+  if (write && request.headers.get('origin') !== `${proto}://${host}`) {
     return error(403, 'Origem da solicitação não permitida.');
   }
   if (write && request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
@@ -82,7 +87,8 @@ export async function proxyCatalog(request: Request, params: CatalogRouteParams)
     const data: unknown = await response.json();
     if (response.status >= 300 && response.status < 400) return error(503, 'O serviço está temporariamente indisponível.');
     return Response.json(data, { status: response.status, headers });
-  } catch {
+  } catch (err) {
+    logger.error('Failed to proxy catalog request', err, { path });
     return error(503, 'Não foi possível acessar o serviço. Tente novamente.');
   }
 }

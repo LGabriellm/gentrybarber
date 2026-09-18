@@ -97,6 +97,8 @@ jobs:
         run: pnpm test:e2e
       - name: Real catalog and booking browser journeys
         run: pnpm test:e2e:catalog
+      - name: Global administration browser journeys
+        run: pnpm test:e2e:admin
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

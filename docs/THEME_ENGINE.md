@@ -24,7 +24,7 @@ Os contratos de código são `ThemeRegistry.register/get/list/resolve`, `ThemeDe
 
 Uma `ThemeVersion` identifica uma revisão imutável e compatível do tema/configuração. A configuração do site guarda a versão publicada. Draft e preview não substituem a versão ativa. Aprovação e publicação são ações diferentes e exigem autorização própria, ownership e registro auditável.
 
-Rollback troca a referência publicada para uma versão anterior válida do mesmo escopo. Não apaga história e não reverte automaticamente migrations do Core. `createThemeVersion`, `transitionThemeVersion`, `createThemeHistory`, `appendThemeVersion`, `publishThemeVersion` e `rollbackThemeVersion` modelam esse contrato com snapshots imutáveis. Ainda são necessários persistência transacional, endpoint, auditoria e preview autenticado para um workflow produtivo.
+Rollback troca a referência publicada para uma versão anterior válida do mesmo escopo. Não apaga história e não reverte automaticamente migrations do Core. `createThemeVersion`, `transitionThemeVersion`, `createThemeHistory`, `appendThemeVersion`, `publishThemeVersion` e `rollbackThemeVersion` modelam esse contrato com snapshots imutáveis. O [Site Workspace](SITE_EDITOR.md) implementa persistência transacional, endpoints administrativos, auditoria, aprovação/publicação e prévia autenticada para os templates Classic e Urban. O workflow bespoke completo permanece separado.
 
 O estado do workflow de design (`BRIEFING`, `DESIGN`, `DEVELOPMENT`, `REVIEW`, `CHANGES_REQUESTED`, `APPROVED`, `PUBLISHED`) não deve ser persistido diretamente como `ThemeVersion.status`. No banco, a versão usa `DRAFT`, `PREVIEW`, `APPROVED`, `PUBLISHED`, `ARCHIVED`; `DesignBrief.status` guarda o workflow do projeto. A integração usa mapeamento explícito: briefing/design/desenvolvimento/alterações → draft; review → preview; aprovado e publicado → seus equivalentes. Arquivamento é ação de persistência futura, separada do briefing.
 
@@ -33,3 +33,7 @@ Antes de publicar: validar schema dos tokens, compatibilidade da versão com ren
 ## Dependências permitidas
 
 `themes` depende de `theme-engine`, `design-system`, `ui` e tipos públicos. Temas não dependem de Prisma, providers de pagamento, secrets, repositórios ou implementação de autenticação. O Core não deve importar um renderer de cliente específico. Detalhes da jornada bespoke estão em [CUSTOM_DESIGN.md](CUSTOM_DESIGN.md).
+
+## Composição HTML/CSS validada
+
+O incremento solicitado permite HTML/CSS interpretado conforme o contrato do [editor](SITE_EDITOR.md), com componentes registrados de preços, agenda, equipe e contato. Não há execução de JavaScript do tenant nem imports dinâmicos. O CSS fica no iframe e os componentes acessam somente contratos públicos do Core. Classic, Urban e Imperial suportam essa composição; a seleção exclusiva continua protegida por ownership e Feature Engine. A configuração opcional é versionada, com rollback para versões anteriores. A administração agora usa exclusivamente o workspace por arquivos; renderers visuais antigos são mantidos para compatibilidade de publicações. O fluxo completo de briefing bespoke permanece separado.

@@ -1,0 +1,30 @@
+name: Frontend container verification
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      matrix:
+        app: [web-public, dashboard, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build standalone image
+        run: docker build --target frontend --build-arg APP=${{ matrix.app }} -t frontend-test .
+      - name: Check unprivileged runtime, HTTP and static assets
+        run: |
+          docker run -d --name frontend-test -p 3000:3000 frontend-test
+          trap 'docker logs frontend-test; docker rm -f frontend-test' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3000/api/health; then break; fi
+            sleep 2
+          done
+          curl --fail http://localhost:3000/api/health
+          test "$(docker exec frontend-test id -u)" != "0"
+          asset=$(docker exec frontend-test sh -c 'find apps/$FRONTEND_APP/.next/static -type f -name "*.js" | head -1')
+          test -n "$asset"
+          curl --fail --silent "http://localhost:3000/_next/static/${asset#*/.next/static/}" > /dev/null

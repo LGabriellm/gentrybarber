@@ -2,11 +2,13 @@ import type { PublicSiteData } from "@platform/theme-engine";
 import { resolveDesignTokens, ServiceCard, ThemeSection } from "@platform/design-system";
 import { Container } from "@platform/ui";
 import { ImperialMark, SiteContact, SiteFooter, SiteNavigation, ThemeShell } from "../../shared";
+import { EditableSite } from '../../editable';
 
 export const imperialTokens = resolveDesignTokens({ primaryColor: "#C2A36B", secondaryColor: "#ADA28B", accentColor: "#C2A36B", backgroundColor: "#181C19", surfaceColor: "#202720", textColor: "#F1EADA", fontHeading: "serif", borderRadius: "none", spacingScale: "generous" });
 
 /** Reviewed composition for a bespoke identity. It receives the same public data contract. */
 export function ImperialTheme({ data }: { data: PublicSiteData }) {
+  if (data.content) return <EditableSite data={data} defaults={imperialTokens} variant="imperial" />;
   return <ThemeShell data={data} defaults={imperialTokens} variant="imperial"><div id="inicio" /><SiteNavigation data={data} /><main>
     <Container><section className="imperial-hero"><div style={{ color: "var(--theme-accent)", marginBottom: 20 }}><ImperialMark /></div><p className="eyebrow">Uma experiência {data.tenant.name}</p><h1 className="hero-heading">A elegância está<br />nos <em style={{ color: "var(--theme-accent)" }}>detalhes.</em></h1><p className="hero-copy">{data.tenant.description}</p><a href="#contato" className="hero-link">Conheça a casa <span aria-hidden="true">↗</span></a></section></Container>
     {!!data.services?.length && <ThemeSection id="servicos" style={{ paddingTop: 0 }}><Container><div className="imperial-frame"><div style={{ maxWidth: 900, margin: "28px auto" }}><p className="eyebrow" style={{ justifyContent: "center", color: "var(--theme-accent)" }}>Nossa seleção</p><h2 style={{ textAlign: "center", fontFamily: "var(--theme-heading-font)", fontSize: "clamp(2rem,4vw,3.4rem)", fontWeight: 400, margin: "12px 0 42px" }}>O cuidado como ritual.</h2><div className="theme-grid" style={{ gap: "0 52px", alignItems: "start" }}>{data.services.map(service => <ServiceCard key={service.id} {...service} variant="editorial" />)}</div></div></div></Container></ThemeSection>}

@@ -1,0 +1,36 @@
+# Frontend release example. Use immutable image tags and an HTTPS ingress.
+services:
+  web-public:
+    image: ${IMAGE_REGISTRY:-platform}/web-public:${RELEASE_TAG:?Set RELEASE_TAG}
+    build:
+      context: .
+      target: frontend
+      args: { APP: web-public }
+    environment:
+      API_URL: ${API_INTERNAL_URL:?Set API_INTERNAL_URL}
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?Set PLATFORM_DOMAIN}
+      PLATFORM_NAME: ${PLATFORM_NAME:-BarberHub}
+    ports: ["127.0.0.1:3000:3000"]
+    restart: unless-stopped
+  dashboard:
+    image: ${IMAGE_REGISTRY:-platform}/dashboard:${RELEASE_TAG:?Set RELEASE_TAG}
+    build:
+      context: .
+      target: frontend
+      args: { APP: dashboard }
+    environment:
+      API_URL: ${API_INTERNAL_URL:?Set API_INTERNAL_URL}
+      PLATFORM_NAME: ${PLATFORM_NAME:-BarberHub}
+    ports: ["127.0.0.1:3001:3000"]
+    restart: unless-stopped
+  admin:
+    image: ${IMAGE_REGISTRY:-platform}/admin:${RELEASE_TAG:?Set RELEASE_TAG}
+    build:
+      context: .
+      target: frontend
+      args: { APP: admin }
+    environment:
+      API_URL: ${API_INTERNAL_URL:?Set API_INTERNAL_URL}
+      PLATFORM_NAME: ${PLATFORM_NAME:-BarberHub}
+    ports: ["127.0.0.1:3002:3000"]
+    restart: unless-stopped

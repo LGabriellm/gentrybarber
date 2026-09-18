@@ -19,7 +19,7 @@ const professionalFields = {
   bio: textSchema,
   active: z.boolean(),
   serviceIds: z.array(idSchema).max(100).refine(ids => new Set(ids).size === ids.length, 'Service ids must be distinct'),
-  userId: z.string().optional(),
+  userId: idSchema.optional(),
 };
 const createServiceSchema = z.object({ ...serviceFields, locationId: idSchema }).strict();
 const updateServiceSchema = z.object({ ...serviceFields, expectedVersion: versionSchema }).strict();
@@ -131,6 +131,7 @@ export class CatalogService {
     return this.db.$transaction(async tx => {
       await requireActiveLocation(tx, tenantId, fields.locationId);
       await requireServices(tx, tenantId, fields.locationId, serviceIds);
+      if (fields.userId && !await tx.membership.findFirst({ where: { tenantId, userId: fields.userId, status: 'ACTIVE' }, select: { id: true } })) throw new AccessError('NOT_FOUND');
       const item = await tx.professional.create({ data: { ...fields, tenantId }, select: professionalSelect });
       if (serviceIds.length) await tx.professionalService.createMany({
         data: serviceIds.map(serviceId => ({ tenantId, locationId: item.locationId, professionalId: item.id, serviceId })),
@@ -150,6 +151,7 @@ export class CatalogService {
       if (!current) throw new AccessError('NOT_FOUND');
       if (current.version !== expectedVersion) throw new AccessError('CONFLICT');
       await requireServices(tx, tenantId, current.locationId, serviceIds);
+      if (fields.userId && !await tx.membership.findFirst({ where: { tenantId, userId: fields.userId, status: 'ACTIVE' }, select: { id: true } })) throw new AccessError('NOT_FOUND');
       const result = await tx.professional.updateMany({
         where: { tenantId, id: resourceId, version: expectedVersion },
         data: { ...fields, version: { increment: 1 } },

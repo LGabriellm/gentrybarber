@@ -14,9 +14,14 @@ import { CatalogService } from './catalog';
 import { BookingService } from './booking';
 import { OnboardingService } from './onboarding';
 import { LocationService } from './locations';
+import { AdminService } from './admin';
+import { SiteEditorService } from './site-editor';
+import { siteContentSchema, siteCodeSchema } from '@platform/theme-engine';
 
-const addressSchema = z.object({ street: z.string().optional(), address: z.string().optional(), city: z.string().default(''), state: z.string().default('') });
-const publishedConfigSchema = z.object({ tokens: designTokenOverridesSchema.optional() });
+import { FinanceService } from './finance';
+
+const addressSchema = z.object({ street: z.string().optional(), address: z.string().optional(), city: z.string().default(''), state: z.string().default(''), mapUrl: z.string().optional() });
+const publishedConfigSchema = z.object({ tokens: designTokenOverridesSchema.optional(), content: siteContentSchema.optional(), code: siteCodeSchema.optional() });
 export class FoundationServices {
   readonly directory;
   readonly features;
@@ -24,6 +29,7 @@ export class FoundationServices {
   readonly booking: BookingService;
   readonly onboarding: OnboardingService;
   readonly locations: LocationService;
+  readonly finance: FinanceService;
   readonly contexts = new TenantContextStore();
   constructor(readonly db: PrismaClient, readonly auth: PlatformAuth, readonly config: PlatformConfig) {
     this.directory = prismaTenantDirectory(db);
@@ -32,6 +38,7 @@ export class FoundationServices {
     this.booking = new BookingService(db);
     this.onboarding = new OnboardingService(db);
     this.locations = new LocationService(db);
+    this.finance = new FinanceService(db);
   }
   async session(request: FastifyRequest) {
     const session = await this.auth.api.getSession({ headers: fromNodeHeaders(request.headers) });
@@ -57,15 +64,102 @@ export class FoundationServices {
       return site;
     });
   }
+  async setupStatus(context: TenantContext) {
+    const [locationsCount, activeServicesCount, activeProfessionals] = await Promise.all([
+      this.db.location.count({ where: { tenantId: context.tenant.id } }),
+      this.db.service.count({ where: { tenantId: context.tenant.id, active: true } }),
+      this.db.professional.findMany({ where: { tenantId: context.tenant.id, active: true, location: { active: true } }, select: { name: true }, take: 2 })
+    ]);
+    return {
+      locationsCount,
+      hasActiveServices: activeServicesCount > 0,
+      activeProfessionalsCount: activeProfessionals.length,
+      soloProfessionalName: activeProfessionals.length === 1 ? activeProfessionals[0]!.name : null,
+    };
+  }
   async entitlements(context: TenantContext) {
     return Promise.all(featureKeys.map(async key => ({ key, ...await this.features.access(context.tenant.id, key) })));
   }
+  async getDesignConfig(context: TenantContext) {
+    return this.contexts.run(context, async () => {
+      let config = await this.db.tenantDesignConfig.findUnique({ where: { tenantId: context.tenant.id } });
+      if (!config) {
+        config = await this.db.tenantDesignConfig.create({ data: { tenantId: context.tenant.id } });
+      }
+      return config;
+    });
+  }
   async domains(context: TenantContext) { return new TenantSiteRepository(this.db, context).listDomains(); }
-  async adminTenants(request: FastifyRequest) {
+  async requireSuperAdmin(request: FastifyRequest) {
     const session = await this.session(request);
     const user = await this.db.user.findUnique({ where: { id: session.user.id }, select: { platformRole: true } });
     if (user?.platformRole !== 'SUPER_ADMIN') throw new AccessError('FORBIDDEN');
-    return this.db.tenant.findMany({ take: 100, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, slug: true, status: true, plan: { select: { name: true } } } });
+    return session;
+  }
+  private adminWrite(request: FastifyRequest) {
+    z.object({}).strict().parse(request.query);
+    if (!request.headers.origin || !this.config.TRUSTED_ORIGINS.includes(request.headers.origin)) throw new AccessError('FORBIDDEN');
+    if (!/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) throw new AccessError('INVALID_INPUT');
+  }
+  async adminStats(request: FastifyRequest) {
+    await this.requireSuperAdmin(request);
+    z.object({}).strict().parse(request.query);
+    const [tenants, users, subscriptions, totalTenants, suspendedTenants, verifiedUsers] = await Promise.all([
+      this.db.tenant.count({ where: { status: 'ACTIVE' } }), this.db.user.count(),
+      this.db.subscription.count({ where: { status: 'ACTIVE' } }), this.db.tenant.count(),
+      this.db.tenant.count({ where: { status: 'SUSPENDED' } }), this.db.user.count({ where: { emailVerified: true } }),
+    ]);
+    return { tenants, users, subscriptions, totalTenants, suspendedTenants, verifiedUsers };
+  }
+  async adminTenants(request: FastifyRequest) {
+    await this.requireSuperAdmin(request);
+    return new AdminService(this.db).tenants(request.query);
+  }
+  async adminUsers(request: FastifyRequest) {
+    await this.requireSuperAdmin(request);
+    return new AdminService(this.db).users(request.query);
+  }
+  async adminPlans(request: FastifyRequest) {
+    await this.requireSuperAdmin(request);
+    z.object({}).strict().parse(request.query);
+    return this.db.plan.findMany({ orderBy: [{ monthlyPriceCents: 'asc' }, { id: 'asc' }], select: { id: true, name: true, description: true, active: true, monthlyPriceCents: true, setupFeeCents: true, customDesignFeeCents: true } });
+  }
+  async adminCreateUser(request: FastifyRequest, body: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).createUser(session.user.id, body);
+  }
+  async adminCreatePlan(request: FastifyRequest, body: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).createPlan(session.user.id, body);
+  }
+  async adminCreateTenant(request: FastifyRequest, body: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).create(session.user.id, body);
+  }
+  async adminTenant(request: FastifyRequest, id: string) {
+    await this.requireSuperAdmin(request);
+    z.object({}).strict().parse(request.query);
+    return new AdminService(this.db).detail(id);
+  }
+  async adminLocation(request: FastifyRequest, id: string, locationId: string | undefined, body: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).location(session.user.id, id, locationId, body);
+  }
+  async adminUpdateTenant(request: FastifyRequest, id: string, body: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).update(session.user.id, id, body);
+  }
+  async adminSiteEditor(request: FastifyRequest, id: string, operation: 'read' | 'save' | 'transition', body?: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    const editor = new SiteEditorService(this.db);
+    if (operation === 'read') { z.object({}).strict().parse(request.query); return editor.read(id); }
+    this.adminWrite(request);
+    return operation === 'save' ? editor.save(id, session.user.id, body) : editor.transition(id, session.user.id, body);
   }
   async publicSite(hostname: string) {
     const tenant = await resolvePublicTenant(hostname, this.config.PLATFORM_DOMAIN, this.directory);
@@ -78,20 +172,24 @@ export class FoundationServices {
     const context = { tenantId: tenant.id, themeId: site.theme.key, allowedThemeIds: [site.theme.key], features };
     const definition = resolvePublicTheme(context);
     const [identity, location, services, professionals] = await Promise.all([
-      this.db.tenant.findUniqueOrThrow({ where: { id: tenant.id }, select: { phone: true, email: true } }),
-      this.db.location.findFirst({ where: { tenantId: tenant.id, active: true }, orderBy: { id: 'asc' }, select: { id: true, address: true } }),
+      this.db.tenant.findUniqueOrThrow({ where: { id: tenant.id }, select: { phone: true, email: true, whatsapp: true } }),
+      this.db.location.findFirst({ where: { tenantId: tenant.id, active: true }, orderBy: { id: 'asc' }, select: { id: true, address: true, timezone: true } }),
       this.db.service.findMany({ where: { tenantId: tenant.id, active: true, location: { active: true } }, orderBy: { name: 'asc' }, take: 100, select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true } }),
-      this.db.professional.findMany({ where: { tenantId: tenant.id, active: true, location: { active: true } }, orderBy: { name: 'asc' }, take: 100, select: { id: true, name: true, bio: true } }),
+      this.db.professional.findMany({ where: { tenantId: tenant.id, active: true, location: { active: true } }, orderBy: { name: 'asc' }, take: 100, select: { id: true, name: true, bio: true, services: { where: { tenantId: tenant.id }, select: { serviceId: true } } } }),
     ]);
     const address = addressSchema.parse(location?.address ?? {});
     const version = publishedConfigSchema.parse(site.publishedThemeVersion.config);
     const data: PublicSiteData = {
-      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, description: site.description, contact: { phone: identity.phone ?? undefined, email: identity.email ?? undefined }, location: { id: location?.id ?? '', address: address.street ?? address.address ?? '', city: address.city, state: address.state } },
-      services: services.map(service => ({ id: service.id, name: service.name, description: service.description ?? undefined, durationMinutes: service.durationMinutes, priceLabel: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.priceCents / 100) })),
-      professionals: professionals.map(professional => ({ id: professional.id, name: professional.name, specialty: professional.bio ?? undefined })),
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, description: site.description, contact: { phone: identity.phone ?? undefined, email: identity.email ?? undefined, whatsapp: identity.whatsapp ?? undefined }, location: { id: location?.id ?? '', address: address.street ?? address.address ?? '', city: address.city, state: address.state, timezone: location?.timezone ?? 'America/Sao_Paulo', mapUrl: address.mapUrl } },
+      services: services.map(service => ({ id: service.id, name: service.name, description: service.description ?? undefined, durationMinutes: service.durationMinutes, priceCents: service.priceCents, priceLabel: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.priceCents / 100) })),
+      professionals: professionals.map(professional => ({ id: professional.id, name: professional.name, specialty: professional.bio ?? undefined, serviceIds: professional.services.map(s => s.serviceId) })),
       tokens: version.tokens,
+      content: version.content,
+      code: version.code,
+      whiteLabel: features.includes('white_label'),
     };
     const primaryDomain = features.includes('custom_domain') ? await this.db.domain.findFirst({ where: { tenantId: tenant.id, status: 'ACTIVE', isPrimary: true }, select: { hostname: true } }) : null;
     return { data, themeId: definition.id, themeContext: context, version: site.publishedThemeVersion.version, title: site.title, canonicalHost: primaryDomain?.hostname ?? `${tenant.slug}.${this.config.PLATFORM_DOMAIN}` };
   }
 }
+

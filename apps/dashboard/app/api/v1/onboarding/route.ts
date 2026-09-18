@@ -1,4 +1,5 @@
 import { readCatalogBody } from '../../../../lib/catalog-proxy';
+import { logger } from '@platform/config';
 
 export async function POST(request: Request) {
   const headers = { 'Cache-Control': 'no-store' };
@@ -15,5 +16,8 @@ export async function POST(request: Request) {
     });
     if (response.status >= 300 && response.status < 400 || !response.headers.get('content-type')?.includes('application/json')) throw new Error('Unavailable');
     return Response.json(await response.json(), { status: response.status, headers });
-  } catch { return Response.json({ message: 'Serviço indisponível. Atualize o painel antes de tentar novamente.' }, { status: 503, headers }); }
+  } catch (err) {
+    logger.error('Failed to complete onboarding request', err);
+    return Response.json({ message: 'Serviço indisponível. Atualize o painel antes de tentar novamente.' }, { status: 503, headers });
+  }
 }

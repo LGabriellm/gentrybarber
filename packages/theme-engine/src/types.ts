@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { DesignTokenOverrides, DesignTokens } from "@platform/design-system";
+import type { SiteContent, SiteEditorConfig } from './site-editor';
 
 /** A serializable, explicitly public projection. Never pass a database entity here. */
 export interface PublicSiteData {
@@ -8,15 +9,19 @@ export interface PublicSiteData {
     readonly name: string;
     readonly slug: string;
     readonly description: string;
-    readonly contact: { readonly phone?: string; readonly email?: string };
-    readonly location: { readonly id: string; readonly address: string; readonly city: string; readonly state: string };
+    readonly contact: { readonly phone?: string; readonly email?: string; readonly whatsapp?: string };
+    readonly location: { readonly id: string; readonly address: string; readonly city: string; readonly state: string; readonly timezone: string; readonly mapUrl?: string };
   };
   readonly services?: readonly {
     readonly id: string; readonly name: string; readonly description?: string;
-    readonly priceLabel?: string; readonly durationMinutes?: number;
+    readonly priceLabel?: string; readonly durationMinutes?: number; readonly priceCents?: number;
   }[];
-  readonly professionals?: readonly { readonly id: string; readonly name: string; readonly specialty?: string }[];
+  readonly professionals?: readonly { readonly id: string; readonly name: string; readonly specialty?: string; readonly serviceIds?: readonly string[] }[];
   readonly tokens?: DesignTokenOverrides;
+  readonly content?: SiteContent;
+  readonly code?: SiteEditorConfig['code'];
+  readonly preview?: boolean;
+  readonly whiteLabel?: boolean;
 }
 
 export type ThemeRenderer = ComponentType<{ readonly data: PublicSiteData }>;

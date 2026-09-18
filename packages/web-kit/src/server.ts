@@ -9,6 +9,28 @@ export async function apiGet<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const incoming = await headers();
+  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'POST', headers: { cookie: incoming.get('cookie') || '', origin: incoming.get('origin') || '', 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', redirect: 'error' });
+  if (response.status === 401) redirect('/login');
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.error || (response.status === 403 ? 'FORBIDDEN' : response.status === 404 ? 'NOT_FOUND' : 'API_ERROR'));
+  }
+  return response.json() as Promise<T>;
+}
+
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const incoming = await headers();
+  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'PATCH', headers: { cookie: incoming.get('cookie') || '', origin: incoming.get('origin') || '', 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', redirect: 'error' });
+  if (response.status === 401) redirect('/login');
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.error || (response.status === 403 ? 'FORBIDDEN' : response.status === 404 ? 'NOT_FOUND' : 'API_ERROR'));
+  }
+  return response.json() as Promise<T>;
+}
+
 const authPaths = new Set(['sign-in/email', 'sign-up/email', 'sign-out', 'get-session', 'verify-email', 'send-verification-email', 'request-password-reset', 'reset-password']);
 export async function proxyAuth(request: Request): Promise<Response> {
   const incoming = new URL(request.url);

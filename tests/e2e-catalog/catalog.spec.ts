@@ -63,16 +63,118 @@ async function login(page: Page) {
   if (sessionCookies.length) {
     await page.context().addCookies(sessionCookies);
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /Olá,/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Barbearia de teste', exact: true })).toBeVisible();
     return;
   }
   await page.goto('/login');
   await page.getByLabel('E-mail', { exact: true }).fill(email);
   await page.getByLabel('Senha', { exact: false }).fill(password);
   await page.getByRole('button', { name: 'Entrar na plataforma' }).click();
-  await expect(page.getByRole('heading', { name: /Olá,/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Barbearia de teste', exact: true })).toBeVisible();
   sessionCookies = await page.context().cookies();
 }
+
+test('conexão WhatsApp mostra QR, expiração, recuperação e confirmação', async ({ page }, testInfo) => {
+  // Fictitious PNG tests image presentation; adapter contracts are covered separately.
+  const qrCode = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jH9kAAAAASUVORK5CYII=';
+  let connected = false;
+  let fail = false;
+  await page.route(`**/api/operations/${prefix}/whatsapp/connection`, async route => {
+    if (fail) return route.fulfill({ status: 503, json: { error: 'WHATSAPP_UNAVAILABLE' } });
+    return route.fulfill({ json: connected ? { state: 'connected', available: true } : route.request().method() === 'POST' ? { state: 'connecting', available: true, qrCode, expiresAt: new Date(Date.now() + 1500).toISOString() } : { state: 'disconnected', available: true } });
+  });
+  await login(page);
+  await page.goto(`/tenants/${prefix}/whatsapp`);
+  await page.getByRole('button', { name: 'Gerar QR code', exact: true }).click();
+  const image = page.getByRole('img', { name: 'QR code para conectar o WhatsApp desta barbearia' });
+  await expect(image).toBeVisible();
+  await expect(page.getByText('O código expirou. Gere outro para continuar.')).toBeVisible();
+  await expect(image).toHaveCount(0);
+  fail = true;
+  await page.getByRole('button', { name: 'Gerar outro QR code' }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  fail = false; connected = true;
+  await page.getByRole('button', { name: 'Gerar QR code', exact: true }).click();
+  await expect(page.getByText('WhatsApp conectado', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('whatsapp-connected.png'), fullPage: true });
+});
+
+test('painel de uma barbearia e um profissional dispensa seleções e organiza as funções', async ({ page }, testInfo) => {
+  const service = await db.service.create({ data: { tenantId, locationId, name: 'Corte individual', priceCents: 5000, durationMinutes: 30 } });
+  const professional = await db.professional.create({ data: { tenantId, locationId, name: 'Profissional Solo' } });
+  await db.professionalService.create({ data: { tenantId, locationId, professionalId: professional.id, serviceId: service.id } });
+  try {
+    await login(page);
+    await expect(page.getByRole('heading', { name: 'Seu dia a dia', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Configure sua barbearia', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dados da barbearia', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cadastro do profissional', exact: true })).toBeVisible();
+    await page.getByLabel('O que você precisa fazer?').fill('servicos');
+    await expect(page.getByRole('heading', { name: 'Serviços e preços', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dados da barbearia', exact: true })).toHaveCount(0);
+    await page.getByLabel('O que você precisa fazer?').fill('inexistente123');
+    await expect(page.getByRole('status')).toContainText('Nenhum atalho');
+    await page.getByRole('button', { name: 'Limpar', exact: true }).click();
+    if (testInfo.project.name === 'mobile') {
+      await expect(page.getByRole('navigation', { name: 'Navegação rápida' })).toBeVisible();
+      await expect(page.getByRole('navigation', { name: 'Navegação rápida' }).getByRole('link', { name: 'Início' })).toHaveAttribute('aria-current', 'page');
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('dashboard-solo.png'), fullPage: true });
+    await page.getByRole('link', { name: /Abrir agenda/ }).click();
+    await expect(page.getByLabel('Unidade da agenda')).toHaveCount(0);
+    const initialDate = await page.getByLabel('Data da agenda').inputValue();
+    await page.getByRole('button', { name: 'Próximo dia', exact: true }).click();
+    await expect(page.getByLabel('Data da agenda')).not.toHaveValue(initialDate);
+    await page.getByRole('button', { name: 'Hoje', exact: true }).click();
+    await expect(page.getByLabel('Data da agenda')).toHaveValue(initialDate);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('agenda-mobile-refresh.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Novo agendamento', exact: true }).click();
+    await page.getByRole('checkbox', { name: /Corte individual/ }).check();
+    await expect(page.getByLabel('Profissional do agendamento')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Consultar horários', exact: true })).toBeEnabled();
+    await page.goto(`/tenants/${prefix}/horarios`);
+    await expect(page.getByRole('checkbox', { name: 'Usar o mesmo horário para a barbearia e Profissional Solo' })).toBeChecked();
+    await expect(page.getByLabel('Unidade dos horários')).toHaveCount(0);
+    await expect(page.getByLabel('Editar horários de')).toHaveCount(0);
+    await expect(page.getByLabel('Bloquear para')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('schedule-solo.png'), fullPage: true });
+  } finally {
+    await db.professionalService.deleteMany({ where: { tenantId, professionalId: professional.id } });
+    await db.professional.delete({ where: { id: professional.id } });
+    await db.service.delete({ where: { id: service.id } });
+  }
+});
+
+test('clientes: busca além dos primeiros 50, paginação, cadastro e edição persistidos', async ({ page }) => {
+  await db.customer.createMany({ data: Array.from({ length: 51 }, (_, index) => ({ tenantId, name: `AAA Review ${String(index).padStart(3, '0')}`, phone: `+551198${String(index).padStart(6, '0')}` })) });
+  await login(page); await page.goto(`/tenants/${prefix}/customers`);
+  await expect(page.getByRole('heading', { name: 'AAA Review 050', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Próxima', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'AAA Review 050', exact: true })).toBeVisible();
+  await page.getByLabel('Buscar cliente', { exact: true }).fill('AAA Review 050');
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await expect(page.getByText('Página 1', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AAA Review 050', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Próxima', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Novo Cliente', exact: true }).click();
+  await page.getByLabel('Nome do cliente', { exact: true }).fill('Cliente criado na revisão');
+  await page.getByLabel('Celular', { exact: true }).fill('11998887766');
+  await page.getByRole('button', { name: 'Salvar Cliente', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Cliente cadastrado com sucesso.');
+  await page.getByRole('button', { name: 'Editar Cliente criado na revisão', exact: true }).click();
+  await page.getByLabel('Nome do cliente', { exact: true }).fill('Cliente editado na revisão');
+  await page.getByRole('button', { name: 'Salvar Cliente', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Cliente atualizado com sucesso.');
+  await page.getByLabel('Buscar cliente', { exact: true }).fill('Cliente editado na revisão');
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await page.getByRole('button', { name: 'Recarregar', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Cliente editado na revisão', exact: true })).toBeVisible();
+  expect(await db.customer.findFirst({ where: { tenantId, phone: '+5511998887766' } })).toMatchObject({ name: 'Cliente editado na revisão', version: 2 });
+});
 
 test('gestão de unidades pelo painel persiste alterações', async ({ page }, testInfo) => {
   await login(page);
@@ -155,12 +257,13 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   const date = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
   const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
   await login(page);
-  await page.getByRole('link', { name: 'Horários e bloqueios', exact: true }).click();
+  await page.getByRole('link', { name: /Horários e pausas/ }).click();
   await page.getByLabel('Unidade dos horários').selectOption(location.id);
   await page.getByRole('button', { name: 'Recarregar horários', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Horários e bloqueios atualizados');
-  for (const target of ['', professional.id]) {
-    await page.getByLabel('Editar horários de').selectOption(target);
+  await expect(page.getByLabel('Editar horários de')).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: /Usar o mesmo horário/ })).toBeChecked();
+  {
     await page.getByRole('button', { name: 'Adicionar intervalo' }).click();
     await page.getByLabel('Dia do intervalo 1').selectOption(String(weekday));
     await page.getByLabel('Início do intervalo 1', { exact: true }).fill('09:00');
@@ -176,13 +279,13 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   await page.getByRole('button', { name: 'Recarregar agenda', exact: true }).click();
   await page.getByRole('button', { name: 'Novo agendamento', exact: true }).click();
   await page.getByRole('checkbox', { name: /Corte da agenda/ }).check();
-  await page.getByLabel('Profissional do agendamento').selectOption(professional.id);
+  await expect(page.getByLabel('Profissional do agendamento')).toHaveCount(0);
   await page.getByRole('button', { name: 'Consultar horários', exact: true }).click();
   await page.getByRole('radio').first().check();
   await page.getByRole('button', { name: 'Novo cliente', exact: true }).click();
   await page.getByLabel('Nome do cliente', { exact: true }).fill('Cliente da agenda');
-  const phone = `+5511${String(BigInt(`0x${randomBytes(6).toString('hex')}`) % 10_000_000_000n).padStart(10, '0')}`;
-  await page.getByLabel('Telefone do cliente').fill(phone);
+  const phone = `+55119${String(BigInt(`0x${randomBytes(6).toString('hex')}`) % 100_000_000n).padStart(8, '0')}`;
+  await page.getByLabel('Telefone do cliente').fill(phone.slice(3));
   await page.getByRole('checkbox', { name: 'O cliente autorizou receber confirmações de agendamento por WhatsApp neste número.' }).check();
   await page.getByRole('button', { name: 'Salvar cliente', exact: true }).click();
   await expect(page.getByText('Cliente selecionado: Cliente da agenda', { exact: true })).toBeVisible();
@@ -198,6 +301,13 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   await expect(page.getByRole('status')).toContainText('Agendamento salvo e agenda atualizada');
   const booked = await db.appointment.findFirstOrThrow({ where: { tenantId, locationId: location.id }, include: { services: true } });
   expect(booked).toMatchObject({ status: 'CONFIRMED', totalCents: 6200 });
+  await page.getByLabel('Buscar na agenda').fill('ninguem123');
+  await expect(page.getByRole('heading', { name: 'Nenhum atendimento com estes filtros.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Limpar filtros', exact: true }).click();
+  await page.getByLabel('Situação', { exact: true }).selectOption('COMPLETED');
+  await expect(page.getByRole('heading', { name: 'Nenhum atendimento com estes filtros.' })).toBeVisible();
+  await page.getByLabel('Situação', { exact: true }).selectOption('CONFIRMED');
+  await expect(page.getByRole('article', { name: 'Atendimento de Cliente da agenda', exact: true })).toBeVisible();
   expect(booked.services).toEqual([expect.objectContaining({ serviceId: service.id, priceCents: 6200, durationMinutes: 30 })]);
   expect(await db.appointment.count({ where: { tenantId, locationId: location.id } })).toBe(1);
   await page.reload();
@@ -212,8 +322,8 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   const moved = await db.appointment.findUniqueOrThrow({ where: { id: booked.id } });
   expect(moved.startsAt.toISOString()).not.toBe(booked.startsAt.toISOString());
   expect(moved.totalCents).toBe(6200);
-  await page.getByLabel('Próximo estado de Cliente da agenda').selectOption('CANCELED');
-  await page.getByRole('button', { name: 'Atualizar atendimento de Cliente da agenda', exact: true }).click();
+  page.once('dialog', dialog => void dialog.accept('Cancelamento solicitado no teste'));
+  await page.getByRole('button', { name: 'Cancelar para Cliente da agenda', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Atendimento atualizado: Cancelado');
   expect((await db.appointment.findUniqueOrThrow({ where: { id: booked.id } })).status).toBe('CANCELED');
   expect(await db.appointmentEvent.count({ where: { tenantId, appointmentId: booked.id } })).toBe(3);
@@ -227,7 +337,7 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   await expect(page.getByRole('status')).toContainText('Bloqueio cadastrado');
   expect(await db.timeOff.count({ where: { tenantId, locationId: location.id } })).toBe(1);
   await page.screenshot({ path: testInfo.outputPath('booking-schedule.png'), fullPage: true });
-  await page.getByRole('button', { name: /Remover bloqueio de toda a unidade/ }).click();
+  await page.getByRole('button', { name: /Remover bloqueio de Sam da agenda/ }).click();
   await expect(page.getByRole('status')).toContainText('Bloqueio removido');
   expect(await db.timeOff.count({ where: { tenantId, locationId: location.id } })).toBe(0);
   expect(errors).toEqual([]);
@@ -238,4 +348,30 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   await expect(page.getByText('Na fila', { exact: true })).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('whatsapp-history.png'), fullPage: true });
+});
+
+test('menu mantém Dados da barbearia entre abas e não oferece edição do site', async ({ page }) => {
+  await login(page);
+  for (const route of ['agenda', 'customers', 'horarios', 'whatsapp', 'services', 'professionals', 'locations']) {
+    await page.goto(`/tenants/${prefix}/${route}`);
+    const nav = page.getByRole('navigation', { name: 'Gestão da barbearia', exact: true });
+    await expect(nav.getByRole('link', { name: 'Dados da barbearia', exact: true })).toBeVisible();
+    await expect(nav.locator('a[aria-current="page"]')).toHaveAttribute('href', `/tenants/${prefix}/${route}`);
+    await expect(page.locator('a[href$="/website"]')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  await page.goto(`/tenants/${prefix}/website`);
+  await expect(page).toHaveURL(new RegExp(`tenant=${prefix}`));
+  await expect(page.locator('a[href$="/website"]')).toHaveCount(0);
+});
+
+test('editar cidade preserva endereço completo da barbearia', async ({ page }) => {
+  await db.location.update({ where: { id: locationId }, data: { address: { street: 'Rua de teste', address: 'Número 42', city: 'Curitiba', state: 'PR', country: 'BR' } } });
+  await login(page);
+  await page.goto(`/tenants/${prefix}/locations`);
+  await page.getByRole('button', { name: 'Editar Unidade Centro', exact: true }).click();
+  await page.getByLabel('Cidade', { exact: true }).fill('Londrina');
+  await page.getByRole('button', { name: 'Salvar unidade', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Unidade atualizada com sucesso');
+  expect(await db.location.findUnique({ where: { id: locationId } })).toMatchObject({ address: { street: 'Rua de teste', address: 'Número 42', city: 'Londrina', state: 'PR', country: 'BR' } });
 });

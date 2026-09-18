@@ -21,6 +21,7 @@ export function createAuth(db: PrismaClient, config: PlatformConfig, email: Noti
     },
     emailVerification: {
       sendOnSignUp: true,
+      sendOnSignIn: true,
       autoSignInAfterVerification: false,
       sendVerificationEmail: async ({ user, url }) => email.send({ to: user.email, subject: `Confirme seu e-mail · ${config.PLATFORM_NAME}`, text: `Confirme seu endereço de e-mail: ${url}` }),
     },

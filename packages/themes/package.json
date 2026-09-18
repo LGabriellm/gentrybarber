@@ -2,7 +2,7 @@
   "name": "@platform/themes", "version": "0.0.0", "private": true, "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "build": "tsc --noEmit", "typecheck": "tsc --noEmit", "test": "vitest run" },
-  "dependencies": { "react": "^19.2.8", "@platform/theme-engine": "workspace:*", "@platform/design-system": "workspace:*", "@platform/ui": "workspace:*", "@platform/web-kit": "workspace:*" },
+  "dependencies": { "react": "^19.2.8", "react-dom": "^19.2.8", "@platform/theme-engine": "workspace:*", "@platform/design-system": "workspace:*", "@platform/ui": "workspace:*", "@platform/web-kit": "workspace:*" },
   "devDependencies": { "react-dom": "^19.2.8" }
 }
  

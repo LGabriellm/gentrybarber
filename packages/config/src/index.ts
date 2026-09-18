@@ -9,6 +9,9 @@ const envSchema = z.object({
   BETTER_AUTH_URL: z.url(),
   TRUSTED_ORIGINS: z.string().min(1).transform(value => value.split(',').map(item => z.url().parse(item.trim()))),
   REDIS_URL: z.url(),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(120),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
+  RATE_LIMIT_NAMESPACE: z.string().regex(/^[a-zA-Z0-9:_-]{1,100}$/).default('platform:http:'),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   BIND_HOST: z.string().default('127.0.0.1'),
   TRUST_PROXY_CIDRS: z.string().default('').transform(value => value.split(',').map(item => item.trim()).filter(Boolean).map(item => z.union([z.ipv4(), z.ipv6(), z.cidrv4(), z.cidrv6()]).parse(item))),
@@ -30,3 +33,4 @@ export function loadConfig(source: Record<string, string | undefined> = process.
 }
 export type PlatformConfig = ReturnType<typeof loadConfig>;
 export const platformName = () => process.env.PLATFORM_NAME || 'BarberHub';
+export * from './logger';

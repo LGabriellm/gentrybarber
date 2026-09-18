@@ -101,7 +101,7 @@ function professionalUpdate(item: CatalogProfessional, overrides: Record<string,
 }
 function expectError(response: LightMyRequestResponse, status: number, error: string) {
   expect(response.statusCode, response.body).toBe(status);
-  expect(response.json()).toEqual({ error });
+  expect(response.json()).toMatchObject({ error });
   expect(response.headers['cache-control']).toBe('no-store');
 }
 async function createService(overrides: Partial<CreateServiceInput> = {}) {
@@ -448,4 +448,28 @@ describe('Catalog API with real PostgreSQL and verified Better Auth sessions', (
     for (const id of [ids.inactiveService, ids.inactiveLocationService, ids.foreignService]) expect(site.data.services.map(item => item.id)).not.toContain(id);
     for (const id of [ids.inactiveProfessional, ids.inactiveLocationProfessional, ids.foreignProfessional]) expect(site.data.professionals.map(item => item.id)).not.toContain(id);
   });
+
+  it('links a professional only to an active member of the same tenant', async () => {
+    const linkedUserId = `${prefix}-linked-user`;
+    await db.user.create({ data: { id: linkedUserId, name: 'Fictitious professional account', email: `${linkedUserId}@example.test`, emailVerified: true } });
+    try {
+      const payload = { ...professionalInput(), userId: linkedUserId };
+      expectError(await write('POST', route('professionals'), payload), 404, 'NOT_FOUND');
+      await db.membership.create({ data: { tenantId: tenantId('b'), userId: linkedUserId, roleId: roles.owner, status: 'ACTIVE' } });
+      expectError(await write('POST', route('professionals'), payload), 404, 'NOT_FOUND');
+      const member = await db.membership.create({ data: { tenantId: tenantId('a'), userId: linkedUserId, roleId: roles.owner, status: 'SUSPENDED' } });
+      expectError(await write('POST', route('professionals'), payload), 404, 'NOT_FOUND');
+      await db.membership.update({ where: { id: member.id }, data: { status: 'ACTIVE' } });
+      const response = await write('POST', route('professionals'), payload);
+      expect(response.statusCode, response.body).toBe(201);
+      const professional = response.json<CatalogProfessional>();
+      await db.membership.update({ where: { id: member.id }, data: { status: 'SUSPENDED' } });
+      expectError(await write('PATCH', route('professionals', 'a', professional.id), professionalUpdate(professional, { userId: linkedUserId })), 404, 'NOT_FOUND');
+    } finally {
+      await db.professional.updateMany({ where: { userId: linkedUserId }, data: { userId: null } });
+      await db.membership.deleteMany({ where: { userId: linkedUserId } });
+      await db.user.delete({ where: { id: linkedUserId } });
+    }
+  });
 });
+

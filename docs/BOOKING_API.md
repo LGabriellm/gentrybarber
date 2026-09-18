@@ -2,6 +2,17 @@
 
 Este incremento oferece agenda interna para membros autorizados, incluindo horários semanais, bloqueios, clientes, disponibilidade, confirmação, reagendamento e estados do atendimento. As confirmações automáticas possuem contrato e ativação em [WHATSAPP.md](WHATSAPP.md). Pagamento continua pendente.
 
+## Agenda adaptada ao tamanho da operação
+
+- No site público e na criação interna, um único profissional elegível é selecionado automaticamente. Elegibilidade considera unidade, situação ativa e os serviços escolhidos. Havendo várias opções, a escolha permanece explícita; nenhuma opção produz orientação e impede consultar/reservar sem profissional.
+- Trocar serviço ou unidade limpa horários anteriores. Uma seleção de profissional que deixou de ser elegível não é reutilizada. O profissional continua identificado no resumo e seu ID é enviado ao Core para validação.
+- Uma única unidade dispensa o seletor no site, na agenda e nos horários. O nome continua visível. A agenda administrativa conserva unidades inativas no catálogo para consulta de histórico; mais de uma unidade disponível para consulta mantém o seletor.
+- Com um único profissional ativo cadastrado na unidade, o editor semanal permite aplicar os mesmos intervalos à barbearia e ao profissional em uma única operação já existente. Esse modo começa ativo quando as escalas coincidem ou o profissional ainda não tem escala. Escalas diferentes continuam separadas até uma escolha explícita de unificação; o usuário pode voltar à edição separada.
+- Nesse cenário individual, novos bloqueios indicam o profissional diretamente, sem pedir uma escolha redundante. O bloqueio é escopado a esse profissional, não a profissionais que possam ser contratados depois.
+- O painel separa ações de atendimento das configurações; a agenda mostra contagens de agendados, em atendimento e concluídos para a data carregada. Seletores e filtros de unidade também são simplificados no catálogo quando há apenas uma opção.
+
+As simplificações são de apresentação. Nenhuma permissão, entitlement, regra de concorrência ou campo obrigatório do contrato da API foi removido. Não há alteração de schema nem ativação automática da agenda própria do papel BARBER.
+
 Toda rota exige contexto tenant construído no servidor. O módulo agenda exige entitlement `booking` e a permissão `appointments.manage_all` além da permissão de ação. O seed concede gestão geral a OWNER, MANAGER e RECEPTIONIST; BARBER aguarda o vínculo entre membership e profissional antes de ter uma agenda própria. Não liberar uma agenda inteira apenas por `appointments.read`.
 
 ## Endpoints
@@ -15,7 +26,7 @@ Base `/v1/tenants/:slug`; contratos de resposta em `packages/types/src/booking.t
 | PUT `/schedule` | `UpdateScheduleInput` → `ScheduleView` | schedules.manage |
 | POST `/time-offs` | `{locationId, professionalId: string ou null, startsAt, endsAt, reason: string ou null}` → `TimeOffView` | schedules.manage |
 | DELETE `/time-offs/:id` | corpo `{}` → `{deleted:true}` | schedules.manage |
-| GET `/customers?q=` | `{items:CustomerView[]}`; busca até 80 caracteres, máximo 50 resultados | customers.read + feature customers |
+| GET `/customers?q=&page=1` | `{items:CustomerView[],page,hasMore}`; busca até 80 caracteres, 50 resultados por página; page inteiro de 1 a 100000 | customers.read + feature customers |
 | POST `/customers` | `CustomerFields` → `CustomerView` | customers.update + feature customers |
 | PATCH `/customers/:id` | `CustomerFields & {expectedVersion}` → `CustomerView` | customers.update + feature customers |
 | GET `/availability` | `AvailabilityQuery` → `AvailabilityView` | appointments.read |
@@ -28,13 +39,15 @@ Customers continua tenant-scoped e exige `customers` além de `booking`. Telefon
 
 CustomerFields aceita `whatsappOptIn?: boolean`. O servidor grava/devolve `whatsappOptInAt` nullable, registra mudanças na auditoria e revoga consentimento quando o telefone muda. Omitted preserva consentimento quando o telefone não mudou; false revoga. As operações de edição usam `expectedVersion` inteiro positivo; as migrations 5 e 6 preservam updatedAt para metadados e adicionam version para concorrência.
 
+A tela independente de clientes usa o proxy `/api/operations/:slug/customers`, pesquisa no servidor pelo botão Buscar e oferece Anterior/Próxima. A resposta adiciona metadados de paginação sem alterar `items`, preservando os consumidores existentes. A reserva pública nunca altera o consentimento de um cliente já cadastrado, mesmo que envie `whatsappOptIn: true`; um telefone anônimo não autoriza reativar consentimento revogado.
+
 ## Onboarding, unidades e reserva pública
 
 POST `/v1/onboarding` exige sessão verificada, origem confiável, JSON e ausência de membership ativa. Campos: tenantName, tenantSlug, locationName, timezone IANA opcional, address estrito e phone E.164 opcional. O plano inicial vem de `SystemSetting[onboarding.defaults].value.planId`, deve estar ativo; configuração ausente desabilita onboarding. O seed local cria essa configuração sem sobrescrever escolhas existentes. Tenant, membership OWNER, primeira unidade e auditoria são atômicos; locks por usuário e slug protegem concorrência. Não publica automaticamente um site.
 
 GET/POST `/v1/tenants/:slug/locations` e PATCH `/locations/:id` exigem `team.manage`, sessão e membership ativa. Alterações usam expectedVersion. A ativação de unidades adicionais exige `multi_location` e respeita seu limite configurado dentro do lock do tenant. Novas unidades herdam o fuso do tenant. Desativação é recusada se houver atendimentos futuros/em andamento, com lock compartilhado com a agenda. O dashboard possui proxy e formulário de unidades.
 
-GET `/v1/public/booking/availability` recebe hostname, locationId, professionalId, serviceIds e date. Não aceita appointmentId. POST `/v1/public/booking/appointments` recebe hostname, locationId, professionalId, serviceIds, startsAt, idempotencyKey, notes opcional e customer `{name,phone,email,notes}`. Ambas exigem hostname resolvido, tenant ativo, website, booking e site publicado; hostname próprio exige custom_domain. Criação devolve apenas `{id,status,startsAt,endsAt,totalCents}`. Dados do cliente existente nunca são sobrescritos por informações anônimas. A idempotência inclui todo o conteúdo de cliente enviado. Estas rotas não enviam WhatsApp e não comprovam posse do telefone; jornada visual pública/verificação e limites distribuídos de abuso permanecem gates antes da operação comercial.
+GET `/v1/public/booking/availability` recebe hostname, locationId, professionalId, serviceIds e date. Não aceita appointmentId. POST `/v1/public/booking/appointments` recebe hostname, locationId, professionalId, serviceIds, startsAt, idempotencyKey, notes opcional e customer `{name,phone,email,notes}`. Ambas exigem hostname resolvido, tenant ativo, website, booking e site publicado; hostname próprio exige custom_domain. Criação devolve apenas `{id,status,startsAt,endsAt,totalCents}`. Dados do cliente existente nunca são sobrescritos por informações anônimas. A idempotência inclui todo o conteúdo de cliente enviado. Não há OTP, token de telefone ou envio automático de confirmação; os antigos endpoints `verification-send` e `verification-check` foram removidos. O telefone informado pelo visitante não prova posse nem identidade. A jornada visual está integrada ao editor e ao site público, conforme [SITE_EDITOR.md](SITE_EDITOR.md).
 
 ## Tempo, disponibilidade e bloqueios
 
@@ -53,3 +66,6 @@ Nova reserva nasce CONFIRMED. PENDING permanece compatível com registros legado
 Usar lock transacional por unidade para coordenar alteração de horários/bloqueios e reservas. Manter a constraint de exclusão PostgreSQL como proteção de conflitos, inclusive em inserts concorrentes. Revalidar disponibilidade dentro da transação. Reagendamento preserva unidade, profissional, cliente, serviços e valores e só aceita CONFIRMED futuro; duração vem do snapshot. Cancelamento libera o intervalo. Erros de unicidade/exclusão concorrente retornam 409; recursos/relacionamentos alheios retornam 404.
 
 Transições: PENDING legado → CANCELED; CONFIRMED → CHECKED_IN, CANCELED ou NO_SHOW; CHECKED_IN → IN_PROGRESS, CANCELED ou NO_SHOW; IN_PROGRESS → COMPLETED ou CANCELED. Estados terminais não mudam. NO_SHOW só após o início. Status e reagendamento exigem expectedVersion e gravam AppointmentEvent + AuditLog na mesma transação; reagendamento registra evento com o mesmo estado e motivo de reagendamento. Falha de auditoria desfaz toda a operação. Nenhuma integração externa participa da transação.
+
+
+GET `/v1/public/booking/options?hostname=...` fornece unidades ativas (ID, nome, fuso), serviços ativos (ID, unidade, nome, centavos, duração) e profissionais ativos (ID, unidade, nome, serviços vinculados). Exige os mesmos entitlements e publicação da disponibilidade. Não retorna cadastro de clientes ou informações de sessão. O intermediário `/api/booking/*` do site determina o hostname no servidor e não aceita o tenant selecionado no corpo ou na query.

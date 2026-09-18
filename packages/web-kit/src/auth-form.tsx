@@ -15,12 +15,15 @@ export function AuthForm({ mode = 'login', token }: { mode?: 'login' | 'register
     if (mode !== 'forgot' && data.password.length < 12) return setMessage('Use uma senha com pelo menos 12 caracteres.');
     if (mode === 'register' && !data.name.trim()) return setMessage('Informe seu nome.');
     const endpoint = { login: 'sign-in/email', register: 'sign-up/email', forgot: 'request-password-reset', reset: 'reset-password' }[mode];
-    const body = mode === 'login' ? { email: data.email, password: data.password } : mode === 'register' ? { name: data.name, email: data.email, password: data.password, callbackURL: `${window.location.origin}/login` } : mode === 'forgot' ? { email: data.email, redirectTo: `${window.location.origin}/reset-password` } : { newPassword: data.password, token };
+    const body = mode === 'login' ? { email: data.email, password: data.password, callbackURL: `${window.location.origin}/login` } : mode === 'register' ? { name: data.name, email: data.email, password: data.password, callbackURL: `${window.location.origin}/login` } : mode === 'forgot' ? { email: data.email, redirectTo: `${window.location.origin}/reset-password` } : { newPassword: data.password, token };
     try {
       const response = await fetch(`/api/auth/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (!response.ok) return setMessage(mode === 'login' ? 'Não foi possível entrar. Confira seus dados e confirme seu e-mail.' : 'Não foi possível concluir. Confira os dados e tente novamente.');
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        return setMessage(mode === 'login' && result.code === 'EMAIL_NOT_VERIFIED' ? 'Enviamos um link de verificação. Confira seu e-mail, confirme a conta e entre novamente.' : mode === 'login' ? 'Não foi possível entrar. Confira seus dados.' : 'Não foi possível concluir. Confira os dados e tente novamente.');
+      }
       if (mode === 'login') { window.location.assign('/'); return; }
-      setMessage(mode === 'register' ? 'Confira seu e-mail para confirmar a conta. O acesso à barbearia depende de uma vinculação pela equipe.' : mode === 'forgot' ? 'Se existir uma conta com esse e-mail, enviaremos as instruções de recuperação.' : 'Senha atualizada. Você já pode entrar.');
+      setMessage(mode === 'register' ? 'Confira seu e-mail para confirmar a conta. O acesso à barbearia depende de uma vinculação pela equipe.' : mode === 'forgot' ? 'Se existir uma conta com esse e-mail, enviaremos as instruções de recuperação.' : 'Senha atualizada. Entre com a nova senha; se o e-mail ainda não estiver verificado, enviaremos um link para confirmar a conta.');
     } catch { setMessage('A plataforma está indisponível neste momento. Tente novamente.'); }
   }
   return <form onSubmit={handleSubmit(submit)} className="auth-form">

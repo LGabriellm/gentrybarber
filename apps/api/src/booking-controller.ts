@@ -15,6 +15,7 @@ export class BookingController {
 
   private async context(request: FastifyRequest, slug: string, permission: PermissionKey, writing = false, customers = false) {
     const context = await this.services.authorize(request, slug, permission, 'booking');
+    requirePermission(context, 'appointments.manage_all');
     if (customers) await this.services.features.require(context.tenant.id, 'customers');
     if (writing) {
       if (!request.headers.origin || !this.services.config.TRUSTED_ORIGINS.includes(request.headers.origin)) throw new AccessError('FORBIDDEN');
@@ -78,36 +79,6 @@ export class BookingController {
   @Get('/appointments')
   async appointments(@Req() request: FastifyRequest, @Param('slug') slug: string, @Query() query: unknown) {
     return this.services.booking.listAppointments(await this.context(request, slug, 'appointments.read'), query);
-  }
-
-  @Get('/whatsapp')
-  async whatsapp(@Req() request: FastifyRequest, @Param('slug') slug: string, @Query() query: unknown) {
-    const context = await this.context(request, slug, 'appointments.read');
-    await this.services.features.require(context.tenant.id, 'whatsapp_automation');
-    z.object({}).strict().parse(query);
-    const items = await this.services.db.notification.findMany({
-      where: { tenantId: context.tenant.id, channel: 'WHATSAPP', templateKey: 'booking.confirmation' },
-      select: { id: true, appointmentId: true, status: true, attempts: true, createdAt: true, sentAt: true, lastError: true },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50,
-    });
-    return { items };
-  }
-
-  @Post('/whatsapp/:id/retry')
-  @HttpCode(200)
-  async retryWhatsApp(@Req() request: FastifyRequest, @Param('slug') slug: string, @Param('id') id: string, @Body() body: unknown) {
-    const context = await this.context(request, slug, 'appointments.update', true);
-    await this.services.features.require(context.tenant.id, 'whatsapp_automation');
-    z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/).parse(id);
-    z.object({}).strict().parse(body);
-    return this.services.db.$transaction(async tx => {
-      const current = await tx.notification.findFirst({ where: { tenantId: context.tenant.id, id, channel: 'WHATSAPP', templateKey: 'booking.confirmation' } });
-      if (!current) throw new AccessError('NOT_FOUND');
-      const changed = await tx.notification.updateMany({ where: { tenantId: context.tenant.id, id, status: 'FAILED' }, data: { status: 'PENDING', processingAt: null, scheduledAt: new Date(), lastError: null, attempts: 0 } });
-      if (changed.count !== 1) throw new AccessError('CONFLICT');
-      await tx.auditLog.create({ data: { tenantId: context.tenant.id, actorUserId: context.userId, action: 'notification.retry_requested', resource: 'Notification', resourceId: id } });
-      return { queued: true };
-    });
   }
 
   @Post('/appointments')

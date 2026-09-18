@@ -1,4 +1,5 @@
 import { readCatalogBody } from './catalog-proxy';
+import { logger } from '@platform/config';
 
 export interface OperationRouteParams { slug: string; path: string[] }
 const responseHeaders = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
@@ -12,7 +13,7 @@ function route(path: string[], method: string): Record<string, number> | null {
     if (resource === 'whatsapp' && method === 'GET') return {};
     if (resource === 'schedule') return method === 'GET' ? { locationId: 128 } : method === 'PUT' ? {} : null;
     if (resource === 'time-offs') return method === 'POST' ? {} : null;
-    if (resource === 'customers') return method === 'GET' ? { q: 80 } : method === 'POST' ? {} : null;
+    if (resource === 'customers') return method === 'GET' ? { q: 80, page: 6 } : method === 'POST' ? {} : null;
     if (resource === 'availability' && method === 'GET') return { locationId: 128, professionalId: 128, date: 10, serviceIds: 1289, appointmentId: 128 };
     if (resource === 'appointments') return method === 'GET' ? { locationId: 128, date: 10 } : method === 'POST' ? {} : null;
   }
@@ -32,7 +33,9 @@ export async function proxyOperation(request: Request, { slug, path }: Operation
     if (!Object.hasOwn(query, key) || incoming.searchParams.getAll(key).length !== 1 || value.length > query[key]!) return error(400, 'Parâmetros não previstos.');
   }
   const write = request.method !== 'GET';
-  if (write && request.headers.get('origin') !== incoming.origin) return error(403, 'Origem da solicitação não permitida.');
+  const proto = request.headers.get('x-forwarded-proto') || incoming.protocol.replace(':', '');
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || incoming.host;
+  if (write && request.headers.get('origin') !== `${proto}://${host}`) return error(403, 'Origem da solicitação não permitida.');
   if (write && request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') return error(415, 'Envie os dados no formato JSON.');
   const forwarded = new Headers();
   for (const name of ['cookie', 'origin']) { const value = request.headers.get(name); if (value) forwarded.set(name, value); }
@@ -49,5 +52,8 @@ export async function proxyOperation(request: Request, { slug, path }: Operation
     const response = await fetch(target, { method: request.method, headers: forwarded, body, cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(15_000) });
     if ((response.status >= 300 && response.status < 400) || !response.headers.get('content-type')?.includes('application/json')) return error(503, 'O serviço está temporariamente indisponível.');
     return Response.json(await response.json(), { status: response.status, headers: responseHeaders });
-  } catch { return error(503, 'Não foi possível acessar o serviço. Tente novamente.'); }
+  } catch (err) {
+    logger.error('Failed to proxy operation request', err, { target: target.toString() });
+    return error(503, 'Não foi possível acessar o serviço. Tente novamente.');
+  }
 }

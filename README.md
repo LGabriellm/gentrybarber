@@ -10,7 +10,7 @@ Fase 1 — MVP em implementação, sobre a Foundation validada. Um monólito mod
 - Resolução pública pelo hostname e autenticação por sessão → membership → tenant → permissão → feature.
 - Feature Engine baseado em dados, overrides com expiração e negativa por padrão.
 - Theme Registry, tokens validados, Classic, Urban e um exemplo bespoke Imperial. Modelos puros de workflow/versionamento/rollback.
-- Site público com projeção segura da API; painel com os ambientes da conta; admin com listagem protegida por SUPER_ADMIN.
+- Site público com projeção segura da API; painel com os ambientes da conta; [admin global](docs/ADMIN.md) protegido por SUPER_ADMIN, com indicadores, buscas, filtros, planos e cadastro de barbearias com responsável verificado. [Editor do site](docs/SITE_EDITOR.md) com prévia, conteúdo, seções e publicação por versão.
 - Catálogo por unidade: criar, editar, desativar e reativar serviços e profissionais, incluindo os vínculos entre eles.
 - Agenda interna: expediente, escalas, pausas, bloqueios, busca/cadastro de clientes, disponibilidade, confirmação, reagendamento e estados do atendimento.
 - Reservas com preços/durações preservados, recuperação de confirmação após falha de conexão, auditoria e proteção contra sobreposição concorrente.
@@ -29,9 +29,25 @@ O projeto fixa Node.js 24.20.0 no Volta e em `devEngines.runtime`. O pnpm instal
 
 1. Copie `.env.example` para `.env`. Gere `BETTER_AUTH_SECRET` com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` e preencha o valor. As demais credenciais do exemplo são exclusivamente locais.
 2. Execute `pnpm install --frozen-lockfile`.
-3. Execute `docker compose up -d`.
+3. Execute `docker compose up -d postgres redis minio mailpit`.
 4. Execute `pnpm db:generate`, `pnpm db:migrate` e `pnpm db:seed`.
 5. Execute `pnpm dev`.
+
+### Executar todos os serviços no Docker
+
+Com Docker Compose e o `.env` preparado no passo 1, execute:
+
+```sh
+docker compose up -d --build
+docker compose run --rm migrate pnpm db:seed
+docker compose ps -a
+```
+
+O Compose sobe PostgreSQL, Redis, MinIO, Mailpit, API, worker, site público, painel e admin. O serviço temporário `migrate` aplica as migrations antes da API e do worker; os frontends aguardam a API pronta. O seed é uma ação manual para carregar dados demonstrativos locais. Os endereços são os mesmos da tabela abaixo. Não execute `pnpm dev` simultaneamente nas mesmas portas.
+
+Os frontends usam builds standalone; após alterar código, repita `docker compose up -d --build`. A API usa modo de desenvolvimento para permitir autenticação HTTP local. Esse Compose é exclusivo do ambiente local; publicação exige HTTPS e configuração de produção descrita em [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+Para consultar logs: `docker compose logs -f api worker`. Para parar e preservar os volumes: `docker compose down`. Para executar a concessão de acesso sem Node no host: `docker compose exec -w /workspace api pnpm access:grant seu-email@example.com imperial OWNER`.
 
 | Aplicação | Endereço local |
 | --- | --- |

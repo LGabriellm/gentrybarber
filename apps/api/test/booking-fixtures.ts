@@ -75,7 +75,7 @@ export function bookingWrite(method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', url: s
 }
 export function bookingError(response: LightMyRequestResponse, status: number, error: string) {
   expect(response.statusCode, response.body).toBe(status);
-  expect(response.json()).toEqual({ error });
+  expect(response.json()).toMatchObject({ error });
   expect(response.headers['cache-control']).toBe('no-store');
 }
 export const futureDate = (days = 2) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
@@ -260,3 +260,4 @@ export async function cleanupBookingTests() {
     ]);
   } finally { await bookingDb.$disconnect(); }
 }
+

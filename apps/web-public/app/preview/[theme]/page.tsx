@@ -6,10 +6,10 @@ export const metadata: Metadata = { title: 'Demonstração de apresentação', r
 export default async function Preview({ params }: { params: Promise<{ theme: string }> }) {
   if (process.env.NODE_ENV === 'production' || process.env.DEMO_MODE !== 'true') notFound();
   const { theme } = await params;
-  if (!['classic', 'urban', 'imperial'].includes(theme)) notFound();
+  if (!['classic', 'urban', 'minimal', 'imperial'].includes(theme)) notFound();
   const data = demoSites[theme as keyof typeof demoSites];
   const themeId = theme === 'imperial' ? 'bespoke-imperial' : theme;
   const { Renderer } = resolvePublicTheme({ tenantId: data.tenant.id, themeId, allowedThemeIds: [themeId], features: theme === 'imperial' ? ['custom_design'] : [] });
-  return <><nav className="demo-nav" aria-label="Temas de demonstração"><strong>Demonstração · conteúdo fictício</strong><a href="/preview/classic">Classic</a><a href="/preview/urban">Urban</a><a href="/preview/imperial">Imperial</a><a href="/">Voltar</a></nav><Renderer data={data}/></>;
+  return <><nav className="demo-nav" aria-label="Temas de demonstração"><strong>Demonstração · conteúdo fictício</strong><a href="/preview/classic">Classic</a><a href="/preview/urban">Urban</a><a href="/preview/minimal">Minimal</a><a href="/preview/imperial">Imperial</a><a href="/">Voltar</a></nav><Renderer data={{ ...data, preview: true }}/></>;
 }
 

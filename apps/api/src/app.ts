@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   type ArgumentsHost,
   type ExceptionFilter,
 } from "@nestjs/common";
@@ -27,7 +28,7 @@ import {
   SwaggerModule,
 } from "@nestjs/swagger";
 import helmet from "@fastify/helmet";
-import rateLimit from "@fastify/rate-limit";
+import { registerAbuseProtection } from './rate-limit';
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { fromNodeHeaders } from "better-auth/node";
 import { z, ZodError } from "zod";
@@ -38,6 +39,7 @@ import { BookingController } from "./booking-controller";
 import { OnboardingController } from "./onboarding-controller";
 import { LocationController } from "./locations-controller";
 import { PublicBookingController } from "./public-booking-controller";
+import { FinanceController } from "./finance-controller";
 import { FOUNDATION } from "./tokens";
 
 export { FOUNDATION } from "./tokens";
@@ -97,6 +99,14 @@ class FoundationController {
     );
   }
 
+  @Get("/v1/tenants/:slug/setup")
+  @ApiCookieAuth()
+  async setup(@Req() request: FastifyRequest, @Param("slug") slug: string) {
+    return this.services.setupStatus(
+      await this.services.authorize(request, slug),
+    );
+  }
+
   @Get("/v1/tenants/:slug/site")
   @ApiCookieAuth()
   async site(@Req() request: FastifyRequest, @Param("slug") slug: string) {
@@ -118,6 +128,26 @@ class FoundationController {
     );
   }
 
+  @Get("/v1/tenants/:slug/design")
+  @ApiCookieAuth()
+  async getDesignConfig(@Req() request: FastifyRequest, @Param("slug") slug: string) {
+    return this.services.getDesignConfig(
+      await this.services.authorize(request, slug, "website.manage", "website"),
+    );
+  }
+
+  @Patch("/v1/tenants/:slug/design")
+  @ApiCookieAuth()
+  async updateDesignConfig(
+    @Req() request: FastifyRequest,
+    @Param("slug") slug: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    await this.services.authorize(request, slug, "website.manage", "website");
+    reply.code(410);
+    return { error: 'EDITOR_MOVED', message: 'Use o editor do site no painel global para salvar um rascunho e publicar as alterações.' };
+  }
+
   @Get("/v1/tenants/:slug/domains")
   @ApiCookieAuth()
   async domains(@Req() request: FastifyRequest, @Param("slug") slug: string) {
@@ -131,13 +161,87 @@ class FoundationController {
     );
   }
 
+  @Get("/v1/admin/stats")
+  @ApiCookieAuth()
+  adminStats(@Req() request: FastifyRequest) {
+    return this.services.adminStats(request);
+  }
+
+  @Get("/v1/admin/users")
+  @ApiCookieAuth()
+  adminUsers(@Req() request: FastifyRequest) {
+    return this.services.adminUsers(request);
+  }
+
+  @Post("/v1/admin/users")
+  @ApiCookieAuth()
+  adminCreateUser(@Req() request: FastifyRequest, @Body() body: unknown) {
+    return this.services.adminCreateUser(request, body);
+  }
+
+  @Get("/v1/admin/plans")
+  @ApiCookieAuth()
+  adminPlans(@Req() request: FastifyRequest) {
+    return this.services.adminPlans(request);
+  }
+
+  @Post("/v1/admin/plans")
+  @ApiCookieAuth()
+  adminCreatePlan(@Req() request: FastifyRequest, @Body() body: unknown) {
+    return this.services.adminCreatePlan(request, body);
+  }
+
   @Get("/v1/admin/tenants")
   @ApiCookieAuth()
-  admin(@Req() request: FastifyRequest) {
+  adminTenants(@Req() request: FastifyRequest) {
     return this.services.adminTenants(request);
   }
 
-  @Get("/v1/public/site")
+  @Post("/v1/admin/tenants")
+  @ApiCookieAuth()
+  adminCreateTenant(@Req() request: FastifyRequest, @Body() body: unknown) {
+    return this.services.adminCreateTenant(request, body);
+  }
+
+  @Patch("/v1/admin/tenants/:id")
+  @ApiCookieAuth()
+  adminUpdateTenant(@Req() request: FastifyRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.services.adminUpdateTenant(request, id, body);
+  }
+
+  @Get('/v1/admin/tenants/:id')
+  @ApiCookieAuth()
+  adminTenant(@Req() request: FastifyRequest, @Param('id') id: string) {
+    return this.services.adminTenant(request, id);
+  }
+  @Post('/v1/admin/tenants/:id/locations')
+  @ApiCookieAuth()
+  adminCreateLocation(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.services.adminLocation(request, id, undefined, body);
+  }
+  @Patch('/v1/admin/tenants/:id/locations/:locationId')
+  @ApiCookieAuth()
+  adminUpdateLocation(@Req() request: FastifyRequest, @Param('id') id: string, @Param('locationId') locationId: string, @Body() body: unknown) {
+    return this.services.adminLocation(request, id, locationId, body);
+  }
+
+  @Get('/v1/admin/tenants/:id/website')
+  @ApiCookieAuth()
+  adminWebsite(@Req() request: FastifyRequest, @Param('id') id: string) {
+    return this.services.adminSiteEditor(request, id, 'read');
+  }
+  @Post('/v1/admin/tenants/:id/website/drafts')
+  @ApiCookieAuth()
+  adminWebsiteDraft(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.services.adminSiteEditor(request, id, 'save', body);
+  }
+  @Post('/v1/admin/tenants/:id/website/transitions')
+  @ApiCookieAuth()
+  adminWebsiteTransition(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.services.adminSiteEditor(request, id, 'transition', body);
+  }
+
+  @Get('/v1/public/site')
   publicSite(@Query() query: unknown) {
     return this.services.publicSite(
       z
@@ -300,7 +404,7 @@ export async function createApplication(
   const app = await NestFactory.create<NestFastifyApplication>(
     {
       module: AppModule,
-      controllers: [FoundationController, CatalogController, BookingController, OnboardingController, LocationController, PublicBookingController],
+      controllers: [FoundationController, CatalogController, BookingController, OnboardingController, LocationController, PublicBookingController, FinanceController],
       providers: [{ provide: FOUNDATION, useValue: services }],
     },
     adapter,
@@ -313,7 +417,7 @@ export async function createApplication(
     },
     referrerPolicy: { policy: "no-referrer" },
   });
-  await app.register(rateLimit, { max: options.testRateLimitMax ?? 120, timeWindow: "1 minute" });
+  await registerAbuseProtection(adapter.getInstance(), config, options.testRateLimitMax);
   app.enableCors({
     origin: config.TRUSTED_ORIGINS,
     credentials: true,
@@ -321,6 +425,9 @@ export async function createApplication(
     allowedHeaders: ["Content-Type"],
   });
   const fastify = adapter.getInstance();
+  fastify.addHook('onRoute', route => {
+    if (route.method === 'POST' && route.url === '/v1/admin/tenants/:id/website/drafts') route.bodyLimit = 1024 * 1024;
+  });
   fastify.addHook("onSend", async (_request, reply, payload) => {
     reply.header("Cache-Control", "no-store");
     return payload;

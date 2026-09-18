@@ -1,0 +1,25 @@
+.dashboard-bottom-nav{display:none}
+.dashboard-workspace :is(a,button,input,select,textarea,summary):focus-visible{outline:3px solid #39765b;outline-offset:3px}
+.dashboard-workspace .main{padding-top:30px}
+.dashboard-workspace .intro{margin-bottom:22px}
+.dashboard-workspace .card:hover{transform:none}
+@media(max-width:700px){
+  .dashboard-workspace{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+  .dashboard-workspace .shell,.shell.dashboard-workspace{padding-left:16px;padding-right:16px}
+  .dashboard-workspace .topbar{padding:16px 0}
+  .dashboard-workspace .main{padding-top:24px;padding-bottom:24px}
+  .dashboard-workspace .intro h1{font-size:2rem}
+  .dashboard-workspace .intro p{font-size:.9rem}
+  .dashboard-workspace .tenant-nav{display:flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding:6px;gap:4px;scrollbar-width:thin}
+  .dashboard-workspace .tenant-nav a{flex-shrink:0;min-height:44px;display:flex;align-items:center;font-size:.85rem}
+  .dashboard-workspace :is(input:not([type=checkbox]):not([type=radio]),select,textarea){font-size:16px;min-height:44px}
+  .dashboard-workspace .catalog-checkbox{min-height:44px;align-items:center}
+  .dashboard-workspace .button{min-height:44px;white-space:normal;text-align:center}
+  .dashboard-workspace .brand{min-width:0;overflow-wrap:anywhere}
+  .dashboard-workspace .brand-mark{flex-shrink:0}
+  .dashboard-bottom-nav{position:fixed;z-index:40;bottom:0;left:0;right:0;display:flex;justify-content:space-around;gap:4px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #dce5df;box-shadow:0 -4px 18px #203c2d08}
+  .dashboard-bottom-nav a{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:52px;max-width:150px;border-radius:12px;text-decoration:none;font-size:.72rem;font-weight:600;color:#64746c}
+  .dashboard-bottom-nav a[aria-current=page]{color:#1c513c;background:#edf4ef}
+  .dashboard-workspace .footer{font-size:.75rem;gap:8px}
+}
+@media(prefers-reduced-motion:reduce){.dashboard-workspace *{transition:none!important}}

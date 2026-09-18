@@ -16,7 +16,7 @@ Não ampliar a Foundation para construir todos os módulos comerciais. A meta co
 
 ## Riscos priorizados
 
-Estado atual: Foundation concluída com limites operacionais registrados; Fase 1 em andamento. Catálogo, agenda interna, onboarding e gestão de unidades estão implementados. A reserva pública possui API; faltam a jornada no site, verificação de telefone e proteção contra abuso para operação comercial. O incremento solicitado de [WhatsApp](WHATSAPP.md) antecipa confirmações da agenda interna, com autorização do cliente, fila persistida e histórico; não representa toda a Fase 5. Ver [MVP_VALIDATION.md](MVP_VALIDATION.md). Os próximos incrementos são concluir a jornada pública e o vínculo de acesso do profissional à própria agenda. Isso ainda não encerra o gate do MVP nem libera billing produtivo.
+Estado atual: Foundation concluída com limites operacionais registrados; Fase 1 em andamento. Catálogo, agenda interna, onboarding e gestão de unidades estão implementados. A reserva pública aceita agendamentos sem verificação de telefone, por decisão temporária de produto. O telefone informado não comprova identidade; monitorar abuso e conflitos antes de operação comercial. O envio automático de confirmações por WhatsApp está desativado e a integração com a API oficial da Meta foi removida. Ver [MVP_VALIDATION.md](MVP_VALIDATION.md). Os próximos incrementos são fortalecer a operação pública e concluir o vínculo de acesso do profissional à própria agenda. Isso ainda não encerra o gate do MVP nem libera billing produtivo.
 
 | Risco | Impacto | Mitigação / evidência necessária |
 | --- | --- | --- |
@@ -34,6 +34,19 @@ Estado atual: Foundation concluída com limites operacionais registrados; Fase 1
 
 ## Decisões antes da produção
 
+O incremento de [administração global](ADMIN.md) oferece visão geral, consultas paginadas e cadastro transacional de barbearias. A consulta de preços não constitui implementação de billing. O vínculo entre profissional e conta exige membership ativa do mesmo tenant; a agenda própria do BARBER ainda depende de autorização completa e validação de todos os endpoints.
+
+A edição global da barbearia agora permite configurar dados/contatos, plano e situação, além de estruturar unidades com o mesmo Core operacional. A consulta de pessoas vinculadas está disponível; convites e edição de funções permanecem como evolução separada.
+
+O [editor de site](SITE_EDITOR.md), solicitado como incremento, antecipa parte da Fase 3: conteúdo estruturado, temas Classic/Urban/Imperial, tokens, HTML/CSS validado, componentes de preços e agenda e publicação versionada. Uploads, páginas adicionais e JavaScript livre permanecem fora deste incremento.
+
+A agenda pública e administrativa foi adaptada a operações individuais: seleção automática da única opção elegível, configuração semanal conjunta opcional para o profissional único e painel organizado por rotina/configuração. Operações maiores conservam as escolhas de unidade/equipe. Isso não altera o gate pendente da agenda própria do papel BARBER.
+
 Fechar política de retenção/exclusão, termos de uso de assets, observabilidade, objetivos de disponibilidade, alertas, rate limits distribuídos, recursos por plano e tratamento de inadimplência. Evoluir para infraestrutura mais complexa apenas quando métricas de volume, falha ou autonomia de equipe justificarem.
 
 A escala de 1 a 10.000 empresas é uma direção arquitetural. A capacidade efetiva precisa de teste de carga, medição de banco e custos; a Foundation não certifica esse volume.
+
+
+## Incremento autorizado — Site Workspace
+
+A solicitação de refazer o editor global antecipa a autoria HTML/CSS interpretada com componentes do Core, biblioteca CSS local, arquivos raster versionados, importação/exportação e skill de geração. Substitui a interface visual administrativa. Não amplia billing, não aceita execução arbitrária e não cria infraestrutura por tenant. Limites e compatibilidade em [SITE_EDITOR.md](SITE_EDITOR.md).

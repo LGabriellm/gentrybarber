@@ -14,11 +14,27 @@ type Feedback = { text: string; error: boolean; conflict?: boolean; signIn?: boo
 const failureMessages: Record<number, string> = {
   400: 'Revise os campos e tente novamente.',
   401: 'Sua sessão expirou. Entre novamente para continuar.',
-  403: 'Seu acesso a este catálogo mudou. Consulte o responsável pela barbearia.',
   404: 'O registro ou uma das opções não está mais disponível nesta barbearia. Recarregue os dados.',
   409: 'Este registro foi alterado por outra pessoa. Recarregue os dados antes de editar novamente; seu formulário será descartado.',
   429: 'Muitas tentativas em pouco tempo. Aguarde um momento antes de tentar novamente.',
 };
+
+const forbiddenMessages: Record<string, string> = {
+  FORBIDDEN: 'Seu acesso a este catálogo mudou. Consulte o responsável pela barbearia.',
+  FEATURE_DISABLED: 'O recurso de operação não está mais habilitado para esta barbearia. Consulte o responsável pelo plano.',
+};
+
+async function failureMessage(response: Response): Promise<string> {
+  if (response.status === 403) {
+    try {
+      const body = await response.json() as { error?: string };
+      const code = body.error ?? '';
+      if (code in forbiddenMessages) return forbiddenMessages[code] as string;
+    } catch { /* body unreadable, fall through */ }
+    return forbiddenMessages.FORBIDDEN as string;
+  }
+  return failureMessages[response.status] || 'Não foi possível completar a operação. Tente novamente.';
+}
 
 function fieldsFromEntry(entry: Entry) {
   if ('priceCents' in entry) return { name: entry.name, description: entry.description, durationMinutes: entry.durationMinutes, priceCents: entry.priceCents, active: entry.active };
@@ -65,7 +81,7 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
         body: JSON.stringify(input), credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(20_000),
       });
       if (!response.ok) {
-        announce({ text: failureMessages[response.status] || 'Não foi possível salvar. Tente novamente.', error: true, conflict: response.status === 409, signIn: response.status === 401 });
+        announce({ text: await failureMessage(response), error: true, conflict: response.status === 409, signIn: response.status === 401 });
         return;
       }
       const saved = await response.json() as Entry;
@@ -91,7 +107,7 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
     try {
       const response = await fetch(apiPath, { cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(20_000) });
       if (!response.ok) {
-        announce({ text: failureMessages[response.status] || 'Não foi possível recarregar. Tente novamente.', error: true, conflict: feedback?.conflict, signIn: response.status === 401 });
+        announce({ text: await failureMessage(response), error: true, conflict: feedback?.conflict, signIn: response.status === 401 });
         return;
       }
       const fresh = await response.json() as Catalog;
@@ -108,9 +124,9 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
 
   return <div className="catalog-manager" aria-busy={busy}>
     <div className="catalog-toolbar">
-      <label className="catalog-filter">Filtrar por unidade<select value={location} onChange={event => setLocation(event.target.value)} disabled={busy}>
+      {data.locations.length > 1 && <label className="catalog-filter">Filtrar por unidade<select value={location} onChange={event => setLocation(event.target.value)} disabled={busy}>
         <option value="">Todas as unidades</option>{data.locations.map(item => <option key={item.id} value={item.id}>{item.name}{item.active ? '' : ' (inativa)'}</option>)}
-      </select></label>
+      </select></label>}
       <div className="catalog-actions"><button type="button" className="button secondary" disabled={busy} onClick={reload}>{busy ? 'Aguarde…' : 'Recarregar dados'}</button><button type="button" className="button" disabled={busy || !hasActiveLocation || !!feedback?.conflict} onClick={() => openEditor('new')}>Novo {singular}</button></div>
     </div>
     {feedback && <div ref={feedbackRef} tabIndex={-1} className={`catalog-feedback ${feedback.error ? 'catalog-feedback-error' : ''}`} role={feedback.error ? 'alert' : 'status'}>
@@ -174,7 +190,7 @@ function CatalogEditor({ resource, entry, locations, services, defaultLocation, 
     <fieldset disabled={disabled} className="catalog-fields">
       <div className="catalog-form-grid">
         <label className="catalog-field" htmlFor={`${idPrefix}-name`}>{isService ? 'Nome do serviço' : 'Nome do profissional'}<input id={`${idPrefix}-name`} name="name" defaultValue={entry?.name || ''} required maxLength={120} autoComplete="off" /></label>
-        <label className="catalog-field" htmlFor={`${idPrefix}-location`}>Unidade{entry ? <><input id={`${idPrefix}-location`} value={locations.find(item => item.id === locationId)?.name || 'Unidade indisponível'} readOnly /><small>A unidade de um cadastro existente não pode ser alterada.</small></> : <select id={`${idPrefix}-location`} value={locationId} required onChange={event => { setLocationId(event.target.value); setSelectedServices([]); }}><option value="" disabled>Selecione a unidade</option>{activeLocations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</label>
+        {(entry ? locations.length === 1 : activeLocations.length === 1) ? <p className="catalog-note">Local de atendimento: <strong>{locations.find(item => item.id === locationId)?.name}</strong></p> : <label className="catalog-field" htmlFor={`${idPrefix}-location`}>Unidade{entry ? <><input id={`${idPrefix}-location`} value={locations.find(item => item.id === locationId)?.name || 'Unidade indisponível'} readOnly /><small>A unidade de um cadastro existente não pode ser alterada.</small></> : <select id={`${idPrefix}-location`} value={locationId} required onChange={event => { setLocationId(event.target.value); setSelectedServices([]); }}><option value="" disabled>Selecione a unidade</option>{activeLocations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</label>}
         {isService && <><label className="catalog-field" htmlFor={`${idPrefix}-price`}>Preço (R$)<input id={`${idPrefix}-price`} name="price" inputMode="decimal" required defaultValue={entry && 'priceCents' in entry ? formatPriceInput(entry.priceCents) : ''} placeholder="Ex.: 45,90" aria-describedby={`${idPrefix}-price-hint`} /><small id={`${idPrefix}-price-hint`}>Até duas casas decimais, sem separador de milhar.</small></label><label className="catalog-field" htmlFor={`${idPrefix}-duration`}>Duração (minutos)<input id={`${idPrefix}-duration`} name="duration" type="number" inputMode="numeric" min={1} max={1440} step={1} required defaultValue={entry && 'durationMinutes' in entry ? entry.durationMinutes : ''} /></label></>}
       </div>
       <label className="catalog-field" htmlFor={`${idPrefix}-detail`}>{isService ? 'Descrição' : 'Bio'}<textarea id={`${idPrefix}-detail`} name="detail" rows={4} maxLength={2000} defaultValue={entry ? 'description' in entry ? entry.description || '' : entry.bio || '' : ''} /><small>Opcional. Até 2.000 caracteres.</small></label>

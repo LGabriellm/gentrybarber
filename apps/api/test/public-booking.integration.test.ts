@@ -113,7 +113,25 @@ describe('Public Booking API', () => {
     await db.tenant.deleteMany({ where: { id: tenantId } });
     await db.role.deleteMany({ where: { id: `${prefix}-owner` } });
     await db.plan.deleteMany({ where: { id: `${prefix}-plan` } });
+    await db.verification.deleteMany({ where: { identifier: { startsWith: `token:${tenantId}:` } } });
     await db.$disconnect();
+  });
+
+  test('returns only active public booking choices and enforces publication and entitlement', async () => {
+    const url = `/v1/public/booking/options?hostname=${hostname}`;
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ locations: [{ id: locationId, name: 'Main', timezone: 'UTC' }], services: [{ id: serviceId, locationId, name: 'Haircut', priceCents: 5000, durationMinutes: 30 }], professionals: [{ id: professionalId, locationId, name: 'John', serviceIds: [serviceId] }] });
+    expect((await app.inject({ method: 'GET', url: `${url}&tenantId=foreign` })).statusCode).toBe(400);
+    await db.service.update({ where: { id: serviceId }, data: { active: false } });
+    expect((await app.inject({ method: 'GET', url })).json()).toMatchObject({ services: [], professionals: [{ serviceIds: [] }] });
+    await db.service.update({ where: { id: serviceId }, data: { active: true } });
+    await db.siteConfiguration.updateMany({ where: { tenantId }, data: { published: false } });
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(404);
+    await db.siteConfiguration.updateMany({ where: { tenantId }, data: { published: true } });
+    await db.planFeature.updateMany({ where: { planId: `${prefix}-plan`, feature: { key: 'booking' } }, data: { enabled: false } });
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(403);
+    await db.planFeature.updateMany({ where: { planId: `${prefix}-plan`, feature: { key: 'booking' } }, data: { enabled: true } });
   });
 
   test('fetch availability anonymously using hostname', async () => {
@@ -134,6 +152,13 @@ describe('Public Booking API', () => {
     const body = response.json();
     expect(body.slots).toBeDefined();
     expect(Array.isArray(body.slots)).toBe(true);
+  });
+
+  test('removed phone verification endpoints are unavailable', async () => {
+    for (const path of ['verification-send', 'verification-check']) {
+      const response = await app.inject({ method: 'POST', url: `/v1/public/booking/${path}`, payload: { hostname, phone: '+5511999999988' } });
+      expect(response.statusCode).toBe(404);
+    }
   });
 
   test('create public appointment anonymously', async () => {
@@ -190,6 +215,7 @@ describe('Public Booking API', () => {
     nextMonday.setUTCDate(nextMonday.getUTCDate() + ((1 + 7 - nextMonday.getUTCDay()) % 7 || 7)); nextMonday.setUTCHours(11, 0, 0, 0);
     const payload = { hostname, locationId, professionalId, serviceIds: [serviceId], startsAt: nextMonday.toISOString(), idempotencyKey: randomUUID(), customer: { name: 'Unverified replacement', phone: customer.phone, email: null, notes: null } };
     const response = await app.inject({ method: 'POST', url: '/v1/public/booking/appointments', payload });
+    expect((await app.inject({ method: 'POST', url: '/v1/public/booking/appointments', payload: { ...payload, verificationToken: 'unused' } })).statusCode).toBe(400);
     expect(response.statusCode, response.body).toBe(201);
     const saved = await db.customer.findFirstOrThrow({ where: { tenantId, id: customer.id } });
     expect(saved).toMatchObject({ name: customer.name, email: customer.email, notes: customer.notes, version: customer.version });

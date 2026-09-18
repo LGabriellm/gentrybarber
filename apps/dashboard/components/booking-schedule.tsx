@@ -24,10 +24,10 @@ export function ScheduleManager({ slug, options, initialSchedule }: { slug: stri
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
   const [message, setMessage] = useState<BookingMessage | null>(null);
-  async function reload() {
-    if (busy || !locationId) return;
+  async function reload(targetLocation = locationId) {
+    if (busy || !targetLocation) return;
     setBusy(true); setMessage(null);
-    try { setSchedule(await operation<ScheduleView>(slug, `schedule?${new URLSearchParams({ locationId })}`)); setStale(false); setMessage({ text: 'Horários e bloqueios atualizados.' }); }
+    try { setSchedule(await operation<ScheduleView>(slug, `schedule?${new URLSearchParams({ locationId: targetLocation })}`)); setStale(false); setMessage({ text: 'Horários e bloqueios atualizados.' }); }
     catch (error) { setStale(true); setMessage({ text: error instanceof Error ? error.message : 'Não foi possível carregar os horários.', error: true, signIn: error instanceof OperationError && error.status === 401 }); }
     finally { setBusy(false); }
   }
@@ -45,7 +45,7 @@ export function ScheduleManager({ slug, options, initialSchedule }: { slug: stri
     } finally { setBusy(false); }
   }
   return <div className="booking-schedules" aria-busy={busy}>
-    <form className="booking-toolbar" onSubmit={event => { event.preventDefault(); void reload(); }}><label className="catalog-field">Unidade dos horários<select value={locationId} disabled={busy} onChange={event => { setLocationId(event.target.value); setSchedule(null); setMessage(null); }}>{options.locations.map(location => <option key={location.id} value={location.id}>{location.name}{location.active ? '' : ' (inativa)'}</option>)}</select></label><button type="submit" className="button secondary" disabled={busy}>{busy ? 'Carregando…' : 'Recarregar horários'}</button></form>
+    <form className="booking-toolbar" onSubmit={event => { event.preventDefault(); void reload(); }}>{options.locations.length > 1 ? <label className="catalog-field">Unidade dos horários<select value={locationId} disabled={busy} onChange={event => { const newLoc = event.target.value; setLocationId(newLoc); setSchedule(null); setMessage(null); void reload(newLoc); }}>{options.locations.map(location => <option key={location.id} value={location.id}>{location.name}{location.active ? '' : ' (inativa)'}</option>)}</select></label> : <p className="booking-choice-summary"><strong>{options.locations[0]?.name}</strong></p>}<button type="submit" className="button secondary" disabled={busy}>{busy ? 'Carregando…' : 'Recarregar horários'}</button></form>
     <BookingFeedback message={message} />
     {stale && <p className="notice">Recarregue os horários para conferir os dados atuais antes de fazer outra alteração.</p>}
     {!schedule ? <section className="panel catalog-empty"><h2>Escolha uma unidade</h2><p>Use “Recarregar horários” para consultar o expediente e os bloqueios.</p></section> : <>
@@ -58,6 +58,8 @@ export function ScheduleManager({ slug, options, initialSchedule }: { slug: stri
 }
 
 function WeeklyScheduleEditor({ schedule, disabled, onInvalid, onSave }: { schedule: ScheduleView; disabled: boolean; onInvalid: (text: string) => void; onSave: (input: UpdateScheduleInput) => Promise<void> }) {
+  const solo = schedule.professionals.length === 1 && schedule.professionals[0]?.active ? schedule.professionals[0] : undefined;
+  const [shared, setShared] = useState(!!solo && (!solo.windows.length || JSON.stringify(solo.windows) === JSON.stringify(schedule.businessHours)));
   const [target, setTarget] = useState('');
   const [windows, setWindows] = useState<DraftWindow[]>(draft(schedule.businessHours));
   async function submit(event: FormEvent) {
@@ -72,10 +74,11 @@ function WeeklyScheduleEditor({ schedule, disabled, onInvalid, onSave }: { sched
     }
     const sorted = parsed.sort((a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute);
     if (sorted.length > 28 || sorted.some((window, index) => index > 0 && window.weekday === sorted[index - 1]!.weekday && window.startMinute < sorted[index - 1]!.endMinute)) { onInvalid('Cadastre no máximo 28 intervalos, sem sobreposição no mesmo dia.'); return; }
-    await onSave({ locationId: schedule.location.id, expectedVersion: schedule.location.version, businessHours: target ? schedule.businessHours : sorted, professionals: target ? [{ professionalId: target, windows: sorted }] : [] });
+    await onSave({ locationId: schedule.location.id, expectedVersion: schedule.location.version, businessHours: shared || !target ? sorted : schedule.businessHours, professionals: shared && solo ? [{ professionalId: solo.id, windows: sorted }] : target ? [{ professionalId: target, windows: sorted }] : [] });
   }
   return <form className="catalog-form" onSubmit={submit}><fieldset className="catalog-fields" disabled={disabled}>
-    <label className="catalog-field">Editar horários de<select value={target} onChange={event => { const id = event.target.value; setTarget(id); setWindows(draft(id ? schedule.professionals.find(professional => professional.id === id)?.windows || [] : schedule.businessHours)); }}><option value="">Expediente da unidade</option>{schedule.professionals.map(professional => <option key={professional.id} value={professional.id}>{professional.name}{professional.active ? '' : ' (inativo)'}</option>)}</select></label>
+    {solo && <label className="catalog-checkbox"><input type="checkbox" checked={shared} onChange={event => { setShared(event.target.checked); setTarget(''); setWindows(draft(schedule.businessHours)); }} />Usar o mesmo horário para a barbearia e {solo.name}</label>}
+    {shared ? <p className="notice">Defina sua semana uma vez. Ao salvar, estes horários serão aplicados à barbearia e a {solo?.name}, incluindo as pausas.</p> : <><label className="catalog-field">Editar horários de<select value={target} onChange={event => { const id = event.target.value; setTarget(id); setWindows(draft(id ? schedule.professionals.find(professional => professional.id === id)?.windows || [] : schedule.businessHours)); }}><option value="">Expediente da unidade</option>{schedule.professionals.map(professional => <option key={professional.id} value={professional.id}>{professional.name}{professional.active ? '' : ' (inativo)'}</option>)}</select></label>{solo && <p className="catalog-note">Os horários da barbearia e do profissional podem ser diferentes. Ative a opção acima se quiser unificá-los.</p>}</>}
     <div className="booking-weekly-windows">{windows.map((window, index) => <div className="booking-weekly-row" key={index}><label className="catalog-field">Dia do intervalo {index + 1}<select value={window.weekday} onChange={event => setWindows(previous => previous.map((item, position) => position === index ? { ...item, weekday: Number(event.target.value) } : item))}>{weekdays.map((day, weekday) => <option key={day} value={weekday}>{day}</option>)}</select></label><label className="catalog-field">Início do intervalo {index + 1}<input value={window.start} placeholder="09:00" inputMode="numeric" maxLength={5} required onChange={event => setWindows(previous => previous.map((item, position) => position === index ? { ...item, start: event.target.value } : item))} /></label><label className="catalog-field">Fim do intervalo {index + 1}<input value={window.end} placeholder="18:00" inputMode="numeric" maxLength={5} required onChange={event => setWindows(previous => previous.map((item, position) => position === index ? { ...item, end: event.target.value } : item))} /></label><button type="button" className="catalog-text-button" aria-label={`Remover intervalo ${index + 1}`} onClick={() => setWindows(previous => previous.filter((_, position) => position !== index))}>Remover</button></div>)}</div>
     {!windows.length && <p className="notice">Nenhum intervalo semanal. {target ? 'Este profissional' : 'Esta unidade'} ficará sem disponibilidade até você cadastrar horários.</p>}
     <div className="catalog-actions"><button type="button" className="button secondary" disabled={windows.length >= 28} onClick={() => setWindows(previous => [...previous, { weekday: 1, start: '09:00', end: '18:00' }])}>Adicionar intervalo</button><button type="submit" className="button">Salvar horários</button></div><p className="catalog-note">Até 28 intervalos por configuração. Alterações não podem invalidar atendimentos futuros já reservados.</p>
@@ -83,6 +86,7 @@ function WeeklyScheduleEditor({ schedule, disabled, onInvalid, onSave }: { sched
 }
 
 function TimeOffEditor({ schedule, disabled, onInvalid, onSave }: { schedule: ScheduleView; disabled: boolean; onInvalid: (text: string) => void; onSave: (input: { locationId: string; professionalId: string | null; startsAt: string; endsAt: string; reason: string | null }) => Promise<void> }) {
+  const solo = schedule.professionals.length === 1 && schedule.professionals[0]?.active ? schedule.professionals[0] : undefined;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (disabled) return;
@@ -104,5 +108,5 @@ function TimeOffEditor({ schedule, disabled, onInvalid, onSave }: { schedule: Sc
     if (start <= Date.now() || end <= start || end - start > 366 * 24 * 60 * 60 * 1000) { onInvalid('O bloqueio precisa começar no futuro, terminar após o início e durar no máximo 366 dias.'); return; }
     await onSave({ locationId: schedule.location.id, professionalId: String(form.get('professionalId') || '') || null, startsAt, endsAt, reason: String(form.get('reason') || '').trim() || null });
   }
-  return <form className="catalog-form" onSubmit={submit}><fieldset className="catalog-fields" disabled={disabled}><label className="catalog-field">Bloquear para<select name="professionalId"><option value="">Toda a unidade</option>{schedule.professionals.map(professional => <option key={professional.id} value={professional.id}>{professional.name}{professional.active ? '' : ' (inativo)'}</option>)}</select></label><div className="catalog-form-grid"><label className="catalog-field">Início do bloqueio<input type="datetime-local" name="startsAt" required step={60} /><small>Horário local de {schedule.location.timezone}.</small></label><label className="catalog-field">Fim do bloqueio<input type="datetime-local" name="endsAt" required step={60} /><small>Horário local de {schedule.location.timezone}.</small></label></div><label className="catalog-field">Motivo do bloqueio<textarea name="reason" maxLength={500} rows={3} /><small>Opcional. Até 500 caracteres.</small></label><button type="submit" className="button">Salvar bloqueio</button></fieldset></form>;
+  return <form className="catalog-form" onSubmit={submit}><fieldset className="catalog-fields" disabled={disabled}>{solo ? <><input type="hidden" name="professionalId" value={solo.id} /><p>Pausar os atendimentos de <strong>{solo.name}</strong> neste período.</p></> : <label className="catalog-field">Bloquear para<select name="professionalId"><option value="">Toda a unidade</option>{schedule.professionals.map(professional => <option key={professional.id} value={professional.id}>{professional.name}{professional.active ? '' : ' (inativo)'}</option>)}</select></label>}<div className="catalog-form-grid"><label className="catalog-field">Início do bloqueio<input type="datetime-local" name="startsAt" required step={60} /><small>Horário local de {schedule.location.timezone}.</small></label><label className="catalog-field">Fim do bloqueio<input type="datetime-local" name="endsAt" required step={60} /><small>Horário local de {schedule.location.timezone}.</small></label></div><label className="catalog-field">Motivo do bloqueio<textarea name="reason" maxLength={500} rows={3} /><small>Opcional. Até 500 caracteres.</small></label><button type="submit" className="button">Salvar bloqueio</button></fieldset></form>;
 }

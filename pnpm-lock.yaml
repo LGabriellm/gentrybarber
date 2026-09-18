@@ -179,6 +179,9 @@ importers:
       '@platform/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@platform/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@platform/web-kit':
         specifier: workspace:*
         version: link:../../packages/web-kit
@@ -367,6 +370,9 @@ importers:
       '@platform/design-system':
         specifier: workspace:*
         version: link:../design-system
+      postcss:
+        specifier: 8.5.28
+        version: 8.5.28
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -391,7 +397,6 @@ importers:
       react:
         specifier: ^19.2.8
         version: 19.2.8
-    devDependencies:
       react-dom:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)

@@ -1,0 +1,116 @@
+import type { PrismaClient, Prisma } from '@platform/database';
+import { AccessError } from '@platform/types';
+import { tenantSlugSchema } from '@platform/tenancy';
+import { z } from 'zod';
+import { LocationOperations } from './locations';
+
+const identifier = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
+const pagination = { q: z.string().trim().max(120).default(''), page: z.coerce.number().int().min(1).max(10000).default(1) };
+const tenantQuery = z.object({ ...pagination, status: z.enum(['', 'TRIAL', 'ACTIVE', 'SUSPENDED', 'CANCELED']).default('') }).strict();
+const userQuery = z.object({ ...pagination, status: z.enum(['', 'verified', 'pending', 'admin']).default('') }).strict();
+const pageSize = 25;
+const tenantFields = { name: z.string().trim().min(2).max(120), slug: tenantSlugSchema, planId: identifier };
+const timezone = z.string().min(1).max(100).refine(value => { try { new Intl.DateTimeFormat('pt-BR', { timeZone: value }); return true; } catch { return false; } });
+const phone = z.string().trim().max(30).regex(/^[+\d\s().-]*$/).nullable();
+const createInput = z.object({ ...tenantFields, ownerEmail: z.email().trim().toLowerCase().max(254), timezone: z.string().max(100).refine(value => { try { new Intl.DateTimeFormat('pt-BR', { timeZone: value }); return true; } catch { return false; } }).default('America/Sao_Paulo') }).strict();
+
+/** All callers must establish SUPER_ADMIN authority in FoundationServices first. */
+export class AdminService {
+  constructor(private readonly db: PrismaClient) {}
+  async detail(id: string) {
+    identifier.parse(id);
+    const tenant = await this.db.tenant.findUnique({ where: { id }, select: {
+      id: true, name: true, slug: true, status: true, planId: true, timezone: true, email: true, phone: true, whatsapp: true, updatedAt: true,
+      plan: { select: { id: true, name: true, active: true } },
+      locations: { orderBy: [{ active: 'desc' }, { name: 'asc' }] },
+      memberships: { orderBy: { createdAt: 'asc' }, select: { id: true, status: true, role: { select: { name: true, key: true } }, user: { select: { name: true, email: true } } } },
+      _count: { select: { services: true, professionals: true } },
+    } });
+    if (!tenant) throw new AccessError('NOT_FOUND');
+    return tenant;
+  }
+  async location(actorUserId: string, tenantId: string, locationId: string | undefined, body: unknown) {
+    identifier.parse(tenantId);
+    const tenant = await this.db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    if (!tenant) throw new AccessError('NOT_FOUND');
+    const operations = new LocationOperations(this.db);
+    const actor = { tenant, userId: actorUserId };
+    return locationId ? operations.updateLocation(actor, locationId, body) : operations.createLocation(actor, body);
+  }
+  async tenants(query: unknown) {
+    const { q, status, page } = tenantQuery.parse(query);
+    const where: Prisma.TenantWhereInput = { ...(status ? { status } : {}), ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { slug: { contains: q, mode: 'insensitive' } }] } : {}) };
+    return this.db.$transaction(async tx => {
+      const total = await tx.tenant.count({ where });
+      const items = await tx.tenant.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: {
+        id: true, name: true, slug: true, status: true, createdAt: true, plan: { select: { name: true } },
+        memberships: { where: { status: 'ACTIVE', role: { key: 'OWNER' } }, take: 1, orderBy: { id: 'asc' }, select: { user: { select: { name: true, email: true } } } },
+      } });
+      return { items, total, page, pageSize };
+    }, { isolationLevel: 'RepeatableRead' });
+  }
+  async users(query: unknown) {
+    const { q, status, page } = userQuery.parse(query);
+    const where: Prisma.UserWhereInput = { ...(status === 'admin' ? { platformRole: 'SUPER_ADMIN' } : status ? { emailVerified: status === 'verified' } : {}), ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } : {}) };
+    return this.db.$transaction(async tx => {
+      const total = await tx.user.count({ where });
+      const items = await tx.user.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, name: true, email: true, emailVerified: true, platformRole: true, createdAt: true } });
+      return { items, total, page, pageSize };
+    }, { isolationLevel: 'RepeatableRead' });
+  }
+  async createUser(actorUserId: string, body: unknown) {
+    const input = z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().toLowerCase().max(254).email(), role: z.enum(['SUPER_ADMIN', 'USER']).default('USER') }).strict().parse(body);
+    return this.db.$transaction(async tx => {
+      const existing = await tx.user.findUnique({ where: { email: input.email } });
+      if (existing) throw new AccessError('CONFLICT');
+      const user = await tx.user.create({ data: { id: crypto.randomUUID(), name: input.name, email: input.email, emailVerified: false, platformRole: input.role } });
+      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_created', resource: 'User', resourceId: user.id } });
+      return { id: user.id, email: user.email };
+    });
+  }
+  async createPlan(actorUserId: string, body: unknown) {
+    const input = z.object({ key: identifier, name: z.string().trim().min(2).max(120), description: z.string().max(500).optional(), monthlyPriceCents: z.number().int().min(0).max(2147483647), setupFeeCents: z.number().int().min(0).max(2147483647), customDesignFeeCents: z.number().int().min(0).max(2147483647), basePlanId: identifier.optional() }).strict().parse(body);
+    return this.db.$transaction(async tx => {
+      const existing = await tx.plan.findUnique({ where: { key: input.key } });
+      if (existing) throw new AccessError('CONFLICT');
+      const base = input.basePlanId ? await tx.plan.findFirst({ where: { id: input.basePlanId, active: true }, include: { features: true } }) : null;
+      if (input.basePlanId && (!base || !base.features.some(feature => feature.enabled))) throw new AccessError('INVALID_INPUT');
+      const plan = await tx.plan.create({ data: { key: input.key, name: input.name, description: input.description, monthlyPriceCents: input.monthlyPriceCents, setupFeeCents: input.setupFeeCents, customDesignFeeCents: input.customDesignFeeCents, active: !!base } });
+      if (base) await tx.planFeature.createMany({ data: base.features.map(feature => ({ planId: plan.id, featureId: feature.featureId, enabled: feature.enabled, limit: feature.limit })) });
+      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.plan_created', resource: 'Plan', resourceId: plan.id } });
+      return { id: plan.id, key: plan.key };
+    });
+  }
+  async create(actorUserId: string, body: unknown) {
+    const data = createInput.parse(body);
+    return this.db.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`onboarding-slug:${data.slug}`}, 0))`;
+      if (await tx.tenant.findUnique({ where: { slug: data.slug } })) throw new AccessError('CONFLICT');
+      const plan = await tx.plan.findFirst({ where: { id: data.planId, active: true } });
+      if (!plan) throw new AccessError('INVALID_INPUT');
+      const owner = await tx.user.findUnique({ where: { email: data.ownerEmail }, select: { id: true, emailVerified: true } });
+      if (!owner?.emailVerified) throw new AccessError('NOT_FOUND');
+      const role = await tx.role.findUnique({ where: { key: 'OWNER' } });
+      if (!role) throw new AccessError('FEATURE_DISABLED');
+      const tenant = await tx.tenant.create({ data: { name: data.name, slug: data.slug, planId: data.planId, timezone: data.timezone, status: 'ACTIVE' } });
+      await tx.membership.create({ data: { tenantId: tenant.id, userId: owner.id, roleId: role.id, status: 'ACTIVE' } });
+      await tx.location.create({ data: { tenantId: tenant.id, name: 'Unidade principal', slug: 'principal', timezone: data.timezone } });
+      await tx.auditLog.create({ data: { tenantId: tenant.id, actorUserId, action: 'admin.tenant_created', resource: 'Tenant', resourceId: tenant.id } });
+      return { id: tenant.id, slug: tenant.slug };
+    });
+  }
+  async update(actorUserId: string, id: string, body: unknown) {
+    identifier.parse(id);
+    const data = z.object({ name: tenantFields.name.optional(), email: z.email().max(254).nullable().optional(), phone: phone.optional(), whatsapp: phone.optional(), timezone: timezone.optional(), status: z.enum(['TRIAL', 'ACTIVE', 'SUSPENDED', 'CANCELED']), planId: identifier, expectedUpdatedAt: z.iso.datetime() }).strict().parse(body);
+    return this.db.$transaction(async tx => {
+      const current = await tx.tenant.findUnique({ where: { id } });
+      if (!current) throw new AccessError('NOT_FOUND');
+      if (current.planId !== data.planId && !await tx.plan.findFirst({ where: { id: data.planId, active: true } })) throw new AccessError('INVALID_INPUT');
+      const { expectedUpdatedAt, ...fields } = data;
+      const changed = await tx.tenant.updateMany({ where: { id, updatedAt: new Date(expectedUpdatedAt) }, data: { ...fields, updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1)) } });
+      if (changed.count !== 1) throw new AccessError('CONFLICT');
+      await tx.auditLog.create({ data: { tenantId: id, actorUserId, action: 'admin.tenant_updated', resource: 'Tenant', resourceId: id, metadata: { previousStatus: current.status, status: data.status, previousPlanId: current.planId, planId: data.planId } } });
+      return { success: true };
+    });
+  }
+}

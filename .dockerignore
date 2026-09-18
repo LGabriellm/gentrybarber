@@ -6,6 +6,7 @@
 .pnpm-store
 **/node_modules
 **/.next
+**/.next-e2e
 **/dist
 **/.turbo
 **/coverage

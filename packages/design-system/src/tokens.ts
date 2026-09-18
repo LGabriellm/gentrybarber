@@ -40,6 +40,18 @@ export const fontFamilies = Object.freeze({
   display: "Impact, 'Arial Narrow', sans-serif",
 });
 
+export function colorContrast(first: string, second: string): number {
+  function luminance(hex: string) {
+    const channels = color.parse(hex).slice(1).match(/../g)!.map(part => {
+      const value = parseInt(part, 16) / 255;
+      return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+    });
+    return channels[0]! * .2126 + channels[1]! * .7152 + channels[2]! * .0722;
+  }
+  const a = luminance(first), b = luminance(second);
+  return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+}
+
 export function tokensToCssVariables(tokens: DesignTokens) {
   const safe = designTokensSchema.parse(tokens);
   return {
@@ -49,6 +61,7 @@ export function tokensToCssVariables(tokens: DesignTokens) {
     "--theme-background": safe.backgroundColor,
     "--theme-surface": safe.surfaceColor,
     "--theme-text": safe.textColor,
+    "--theme-on-primary": colorContrast(safe.primaryColor, '#FFFFFF') >= colorContrast(safe.primaryColor, '#000000') ? '#FFFFFF' : '#000000',
     "--theme-heading-font": fontFamilies[safe.fontHeading],
     "--theme-body-font": fontFamilies[safe.fontBody],
     "--theme-radius": { none: "0", subtle: "6px", rounded: "22px" }[safe.borderRadius],

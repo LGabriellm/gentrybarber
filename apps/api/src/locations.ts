@@ -32,7 +32,10 @@ const updateLocationSchema = z.object({
   expectedVersion: versionSchema,
 }).strict();
 
-export class LocationService {
+type LocationActor = { tenant: { id: string }; userId: string };
+
+/** Shared operations: callers establish membership authority or SUPER_ADMIN before invoking. */
+export class LocationOperations {
   constructor(private readonly db: PrismaClient) {}
   private async lock(tx: Prisma.TransactionClient, tenantId: string) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`locations:${tenantId}`}, 0))`;
@@ -44,8 +47,7 @@ export class LocationService {
     if (!grant.enabled || grant.limit !== null && count >= grant.limit) throw new AccessError('FEATURE_DISABLED');
   }
 
-  async listLocations(context: TenantContext) {
-    requirePermission(context, 'team.manage');
+  async listLocations(context: LocationActor) {
     
     const locations = await this.db.location.findMany({
       where: { tenantId: context.tenant.id },
@@ -55,8 +57,7 @@ export class LocationService {
     return { locations };
   }
 
-  async createLocation(context: TenantContext, data: unknown) {
-    requirePermission(context, 'team.manage');
+  async createLocation(context: LocationActor, data: unknown) {
     const input = createLocationSchema.parse(data);
 
     return this.db.$transaction(async (tx) => {
@@ -90,8 +91,7 @@ export class LocationService {
     });
   }
 
-  async updateLocation(context: TenantContext, id: string, data: unknown) {
-    requirePermission(context, 'team.manage');
+  async updateLocation(context: LocationActor, id: string, data: unknown) {
     const input = updateLocationSchema.parse(data);
     idSchema.parse(id);
 
@@ -125,5 +125,20 @@ export class LocationService {
       await tx.auditLog.create({ data: { tenantId: context.tenant.id, actorUserId: context.userId, action: 'location.updated', resource: 'Location', resourceId: id } });
       return updated;
     });
+  }
+}
+
+export class LocationService extends LocationOperations {
+  override async listLocations(context: TenantContext) {
+    requirePermission(context, 'team.manage');
+    return super.listLocations(context);
+  }
+  override async createLocation(context: TenantContext, data: unknown) {
+    requirePermission(context, 'team.manage');
+    return super.createLocation(context, data);
+  }
+  override async updateLocation(context: TenantContext, id: string, data: unknown) {
+    requirePermission(context, 'team.manage');
+    return super.updateLocation(context, id, data);
   }
 }

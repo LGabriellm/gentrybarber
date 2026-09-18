@@ -1,0 +1,170 @@
+# Production stack. Requires .env.production alongside this file.
+# Deploy with: docker compose -f compose.production.yaml up -d --build
+name: barber-platform-prod
+
+x-backend-environment: &backend-environment
+  NODE_ENV: production
+  DATABASE_URL: postgresql://platform:${POSTGRES_PASSWORD:?}@postgres:5432/platform
+  REDIS_URL: redis://redis:6379
+  BIND_HOST: 0.0.0.0
+  API_PORT: 4000
+  SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-platform}
+  RATE_LIMIT_NAMESPACE: ${RATE_LIMIT_NAMESPACE:-platform:http:}
+  RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+  RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+  TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
+  NOTIFICATIONS_MODE: live
+
+x-frontend: &frontend
+  init: true
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+  environment:
+    API_URL: http://api:4000
+    PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?Set PLATFORM_DOMAIN}
+    PLATFORM_NAME: ${PLATFORM_NAME:-BarberHub}
+  depends_on:
+    api:
+      condition: service_healthy
+
+services:
+  # ── Infrastructure ─────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: platform
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U platform -d platform']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    # No ports exposed — only reachable from the Docker network.
+
+  redis:
+    image: redis:7.4-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '256mb', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+
+  # ── Backend ─────────────────────────────────────────────────────
+  migrate:
+    build:
+      context: .
+      target: runtime
+      args: { APP: api }
+    init: true
+    environment:
+      <<: *backend-environment
+    command: ['pnpm', 'db:migrate']
+    restart: 'no'
+    working_dir: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      target: runtime
+      args: { APP: api }
+    init: true
+    environment:
+      <<: *backend-environment
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Generate with at least 32 random characters}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:?Set TRUSTED_ORIGINS}
+    # Direct access via IP. Change to 127.0.0.1 when Caddy+domain is configured.
+    ports: ['0.0.0.0:4000:4000']
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      target: runtime
+      args: { APP: worker }
+    init: true
+    environment: *backend-environment
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    stop_grace_period: 60s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # ── Frontends ───────────────────────────────────────────────────
+  web-public:
+    <<: *frontend
+    build:
+      context: .
+      target: frontend
+      args: { APP: web-public }
+    ports: ['0.0.0.0:3000:3000']
+
+  dashboard:
+    <<: *frontend
+    build:
+      context: .
+      target: frontend
+      args: { APP: dashboard }
+    ports: ['0.0.0.0:3001:3000']
+
+  admin:
+    <<: *frontend
+    build:
+      context: .
+      target: frontend
+      args: { APP: admin }
+    ports: ['0.0.0.0:3002:3000']
+
+volumes:
+  postgres-data:
+  redis-data:

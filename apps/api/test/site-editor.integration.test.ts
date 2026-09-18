@@ -1,0 +1,100 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { bookingDb as db, bookingTenant, bookingPrefix, bookingGet, bookingWrite, setupBookingTests, cleanupBookingTests, operator } from './booking-fixtures';
+
+describe('Tenant website editor', () => {
+  const path = `/v1/admin/tenants/${bookingTenant()}/website`;
+  const publicPath = `/v1/public/site?hostname=${bookingTenant()}.platform.test`;
+  let themeId: string;
+  let featureId: string;
+  let ownedFeature = false;
+  let ownedTheme = false;
+  let firstId: string;
+  let secondId: string;
+  const content = { title: 'Site de teste', description: 'Descrição pública', heroTitle: 'Corte com personalidade', heroSubtitle: 'Conteúdo da capa', sections: [{ id: 'about', type: 'text', title: 'Nossa história', body: 'Um espaço para você.', visible: true }] };
+  const config = { content, tokens: { primaryColor: '#345678' } };
+  const brandImage = { src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0b8AAAAASUVORK5CYII=', alt: 'Nosso espaço' };
+  beforeAll(async () => {
+    await setupBookingTests();
+    const feature = await db.feature.upsert({ where: { key: 'website' }, create: { id: `${bookingPrefix}-website`, key: 'website', name: 'Site' }, update: {} });
+    featureId = feature.id; ownedFeature = feature.id === `${bookingPrefix}-website`;
+    const tenant = await db.tenant.findUniqueOrThrow({ where: { id: bookingTenant() } });
+    await db.planFeature.create({ data: { planId: tenant.planId, featureId, enabled: true } });
+    const theme = await db.theme.upsert({ where: { key: 'classic' }, create: { id: `${bookingPrefix}-classic`, key: 'classic', name: 'Classic', kind: 'TEMPLATE' }, update: {} });
+    themeId = theme.id; ownedTheme = theme.id === `${bookingPrefix}-classic`;
+  });
+  afterAll(async () => {
+    await db.siteConfiguration.deleteMany({ where: { tenantId: { startsWith: bookingPrefix } } });
+    await db.themeVersion.deleteMany({ where: { tenantId: { startsWith: bookingPrefix } } });
+    await cleanupBookingTests();
+    if (ownedTheme) await db.theme.delete({ where: { id: themeId } });
+    if (ownedFeature) await db.feature.delete({ where: { id: featureId } });
+  });
+  it('requires global authority, tenant entitlement and safe structured inputs', async () => {
+    expect((await bookingGet(path, null)).statusCode).toBe(401);
+    expect((await bookingGet(path)).statusCode).toBe(403);
+    expect((await bookingWrite('POST', `${path}/drafts`, {})).statusCode).toBe(403);
+    expect((await bookingWrite('POST', `${path}/transitions`, {})).statusCode).toBe(403);
+    await db.user.update({ where: { id: operator.id }, data: { platformRole: 'SUPER_ADMIN' } });
+    const body = { expectedVersionId: null, themeId, config };
+    expect((await bookingWrite('POST', `${path}/drafts`, body, { origin: null })).statusCode).toBe(403);
+    expect((await bookingWrite('POST', `${path}/drafts`, { ...body, tenantId: 'other' })).statusCode).toBe(400);
+    expect((await bookingWrite('POST', `${path}/drafts`, { ...body, config: { ...config, tokens: { primaryColor: 'url(https://example.test)' } } })).statusCode).toBe(400);
+    expect((await bookingWrite('POST', `${path}/drafts`, { ...body, config: { ...config, content: { ...content, sections: [...content.sections, ...content.sections] } } })).statusCode).toBe(400);
+    expect((await bookingWrite('POST', `${path}/drafts`, { ...body, themeId: 'bespoke-other-tenant' })).statusCode).toBe(400);
+    for (const src of ['https://outside.example/foto.jpg', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,PHNjcmlwdD4=']) expect((await bookingWrite('POST', `${path}/drafts`, { ...body, config: { ...config, content: { ...content, heroImage: { ...brandImage, src } } } })).statusCode).toBe(400);
+    for (const code of [{ enabled: true, html: '<script>alert(1)</script>', css: '' }, { enabled: false, html: '<barber-booking />', css: '@import "/private";' }]) expect((await bookingWrite('POST', `${path}/drafts`, { ...body, config: { ...config, code } })).statusCode).toBe(400);
+    await db.tenantFeatureOverride.create({ data: { tenantId: bookingTenant('b'), featureId, enabled: false, reason: 'Test denial' } });
+    expect((await bookingGet(`/v1/admin/tenants/${bookingTenant('b')}/website`)).statusCode).toBe(403);
+    expect(await db.themeVersion.count({ where: { tenantId: bookingTenant() } })).toBe(0);
+  });
+  it('saves one immutable draft under concurrent writes without publishing', async () => {
+    const before = (await bookingGet(path)).json();
+    expect(before.latestId).toBeNull();
+    expect(await db.siteConfiguration.count({ where: { tenantId: bookingTenant() } })).toBe(0);
+    const body = { expectedVersionId: null, themeId, config };
+    const results = await Promise.all([bookingWrite('POST', `${path}/drafts`, body), bookingWrite('POST', `${path}/drafts`, body)]);
+    expect(results.map(r => r.statusCode).sort()).toEqual([201, 409]);
+    firstId = results.find(r => r.statusCode === 201)!.json().id;
+    expect((await bookingGet(publicPath, null)).statusCode).toBe(404);
+    expect((await bookingWrite('POST', `${path}/transitions`, { action: 'publish', versionId: firstId, expectedPublishedId: null })).statusCode).toBe(409);
+  });
+  it('approves then publishes exactly the saved revision and keeps later drafts private', async () => {
+    const action = { versionId: firstId, expectedPublishedId: null };
+    expect((await bookingWrite('POST', `/v1/admin/tenants/${bookingTenant('foreign')}/website/transitions`, { ...action, action: 'approve' })).statusCode).toBe(404);
+    expect((await bookingWrite('POST', `${path}/transitions`, { ...action, action: 'approve' })).statusCode).toBe(201);
+    expect((await bookingGet(publicPath, null)).statusCode).toBe(404);
+    expect((await bookingWrite('POST', `${path}/transitions`, { ...action, action: 'publish' })).statusCode).toBe(201);
+    const published = await bookingGet(publicPath, null);
+    expect(published.statusCode, published.body).toBe(200);
+    expect(published.json().data.content).toEqual(content);
+    const draft = await bookingWrite('POST', `${path}/drafts`, { expectedVersionId: firstId, themeId, config: { ...config, code: { enabled: true, html: '<main><barber-prices layout="table" /><barber-booking /></main>', css: 'main { padding: 24px; }' }, content: { ...content, heroTitle: 'Nova capa em rascunho', appearance: { width: 'wide', imageShape: 'arch' }, heroImage: brandImage } } });
+    expect(draft.statusCode).toBe(201); secondId = draft.json().id;
+    expect((await bookingGet(publicPath, null)).json().data.content.heroTitle).toBe(content.heroTitle);
+    expect((await bookingGet(publicPath, null)).json().data.content.heroImage).toBeUndefined();
+    expect((await bookingGet(path)).json().config.content.heroImage).toEqual(brandImage);
+    expect((await db.themeVersion.findUniqueOrThrow({ where: { id: firstId } })).config).toEqual(config);
+  });
+  it('restores an earlier published snapshot, rejects stale transitions and audits each action', async () => {
+    const action = { versionId: secondId, expectedPublishedId: firstId };
+    await bookingWrite('POST', `${path}/transitions`, { ...action, action: 'approve' });
+    expect((await bookingWrite('POST', `${path}/transitions`, { ...action, action: 'publish', expectedPublishedId: null })).statusCode).toBe(409);
+    expect((await bookingWrite('POST', `${path}/transitions`, { ...action, action: 'publish' })).statusCode).toBe(201);
+    expect((await bookingGet(publicPath, null)).json().data.content.heroTitle).toBe('Nova capa em rascunho');
+    expect((await bookingGet(publicPath, null)).json().data.content.heroImage).toEqual(brandImage);
+    expect((await bookingGet(publicPath, null)).json().data.content.appearance).toEqual({ width: 'wide', imageShape: 'arch' });
+    expect((await bookingGet(publicPath, null)).json().data.code).toMatchObject({ enabled: true, html: '<main><barber-prices layout="table" /><barber-booking /></main>' });
+    expect((await bookingWrite('POST', `${path}/transitions`, { action: 'rollback', versionId: firstId, expectedPublishedId: secondId })).statusCode).toBe(201);
+    expect((await bookingGet(publicPath, null)).json().data.content.heroTitle).toBe(content.heroTitle);
+    expect((await bookingGet(publicPath, null)).json().data.code).toBeUndefined();
+    expect((await bookingGet(publicPath, null)).json().data.content.heroImage).toBeUndefined();
+    expect(await db.auditLog.count({ where: { tenantId: bookingTenant(), actorUserId: operator.id, action: { startsWith: 'site.' } } })).toBe(7);
+    expect((await db.themeVersion.findUniqueOrThrow({ where: { id: secondId } })).status).toBe('PUBLISHED');
+  });
+  it('accepts a bounded code document larger than the default API body limit', async () => {
+    const code = { enabled: true, html: `<main><p>${'a'.repeat(29000)}</p><barber-booking /></main>`, css: '.space { margin: 1px; }\n'.repeat(200) };
+    const body = { expectedVersionId: secondId, themeId, config: { ...config, code } };
+    expect(Buffer.byteLength(JSON.stringify(body))).toBeGreaterThan(32768);
+    expect((await bookingWrite('POST', `${path}/drafts`, body)).statusCode).toBe(201);
+    expect((await bookingGet(publicPath, null)).json().data.code).toBeUndefined();
+  });
+});

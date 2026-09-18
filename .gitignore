@@ -8,9 +8,12 @@ coverage/
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.tsbuildinfo
 packages/database/src/generated/
 playwright-report/
 test-results/
 .local/
 *.log
+diff.txt
+backups/

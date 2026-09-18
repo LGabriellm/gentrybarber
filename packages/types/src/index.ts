@@ -10,3 +10,12 @@ export class AccessError extends Error {
 export type * from './catalog';
 export type * from './booking';
 export type * from './locations';
+
+export interface FinanceSummaryView {
+  todayTotalCents: number;
+  monthTotalCents: number;
+  todayAppointments: number;
+  monthAppointments: number;
+  professionalsRevenue: { id: string; name: string; totalCents: number }[];
+  topServices: { id: string; name: string; count: number; totalCents: number }[];
+}
