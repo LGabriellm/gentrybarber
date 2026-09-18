@@ -74,31 +74,6 @@ async function login(page: Page) {
   sessionCookies = await page.context().cookies();
 }
 
-test('conexão WhatsApp mostra QR, expiração, recuperação e confirmação', async ({ page }, testInfo) => {
-  // Fictitious PNG tests image presentation; adapter contracts are covered separately.
-  const qrCode = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jH9kAAAAASUVORK5CYII=';
-  let connected = false;
-  let fail = false;
-  await page.route(`**/api/operations/${prefix}/whatsapp/connection`, async route => {
-    if (fail) return route.fulfill({ status: 503, json: { error: 'WHATSAPP_UNAVAILABLE' } });
-    return route.fulfill({ json: connected ? { state: 'connected', available: true } : route.request().method() === 'POST' ? { state: 'connecting', available: true, qrCode, expiresAt: new Date(Date.now() + 1500).toISOString() } : { state: 'disconnected', available: true } });
-  });
-  await login(page);
-  await page.goto(`/tenants/${prefix}/whatsapp`);
-  await page.getByRole('button', { name: 'Gerar QR code', exact: true }).click();
-  const image = page.getByRole('img', { name: 'QR code para conectar o WhatsApp desta barbearia' });
-  await expect(image).toBeVisible();
-  await expect(page.getByText('O código expirou. Gere outro para continuar.')).toBeVisible();
-  await expect(image).toHaveCount(0);
-  fail = true;
-  await page.getByRole('button', { name: 'Gerar outro QR code' }).click();
-  await expect(page.getByRole('alert')).toBeVisible();
-  fail = false; connected = true;
-  await page.getByRole('button', { name: 'Gerar QR code', exact: true }).click();
-  await expect(page.getByText('WhatsApp conectado', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('whatsapp-connected.png'), fullPage: true });
-});
 
 test('painel de uma barbearia e um profissional dispensa seleções e organiza as funções', async ({ page }, testInfo) => {
   const service = await db.service.create({ data: { tenantId, locationId, name: 'Corte individual', priceCents: 5000, durationMinutes: 30 } });
@@ -286,7 +261,6 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   await page.getByLabel('Nome do cliente', { exact: true }).fill('Cliente da agenda');
   const phone = `+55119${String(BigInt(`0x${randomBytes(6).toString('hex')}`) % 100_000_000n).padStart(8, '0')}`;
   await page.getByLabel('Telefone do cliente').fill(phone.slice(3));
-  await page.getByRole('checkbox', { name: 'O cliente autorizou receber confirmações de agendamento por WhatsApp neste número.' }).check();
   await page.getByRole('button', { name: 'Salvar cliente', exact: true }).click();
   await expect(page.getByText('Cliente selecionado: Cliente da agenda', { exact: true })).toBeVisible();
   // The server commits successfully, but the first response never reaches the UI.
@@ -341,18 +315,11 @@ test('horários, cliente, confirmação recuperada, reagendamento e bloqueio', a
   await expect(page.getByRole('status')).toContainText('Bloqueio removido');
   expect(await db.timeOff.count({ where: { tenantId, locationId: location.id } })).toBe(0);
   expect(errors).toEqual([]);
-  expect(await db.notification.count({ where: { tenantId, appointmentId: booked.id } })).toBe(2);
-  expect((await db.customer.findFirstOrThrow({ where: { tenantId, phone } })).whatsappOptInAt).not.toBeNull();
-  await page.goto(`/tenants/${prefix}/whatsapp`);
-  await expect(page.getByRole('heading', { name: 'Confirmações por WhatsApp' })).toBeVisible();
-  await expect(page.getByText('Na fila', { exact: true })).toHaveCount(2);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('whatsapp-history.png'), fullPage: true });
 });
 
 test('menu mantém Dados da barbearia entre abas e não oferece edição do site', async ({ page }) => {
   await login(page);
-  for (const route of ['agenda', 'customers', 'horarios', 'whatsapp', 'services', 'professionals', 'locations']) {
+  for (const route of ['agenda', 'customers', 'horarios', 'services', 'professionals', 'locations']) {
     await page.goto(`/tenants/${prefix}/${route}`);
     const nav = page.getByRole('navigation', { name: 'Gestão da barbearia', exact: true });
     await expect(nav.getByRole('link', { name: 'Dados da barbearia', exact: true })).toBeVisible();
