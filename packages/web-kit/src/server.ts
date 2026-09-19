@@ -1,6 +1,14 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+function getOrigin(incoming: Headers) {
+  const origin = incoming.get('origin');
+  if (origin) return origin;
+  const host = incoming.get('host') || 'localhost';
+  const proto = incoming.get('x-forwarded-proto') || (process.env.NODE_ENV === 'production' ? 'https' : 'http');
+  return `${proto}://${host}`;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const incoming = await headers();
   const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { headers: { cookie: incoming.get('cookie') || '' }, cache: 'no-store' });
@@ -11,7 +19,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const incoming = await headers();
-  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'POST', headers: { cookie: incoming.get('cookie') || '', origin: incoming.get('origin') || '', 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', redirect: 'error' });
+  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'POST', headers: { cookie: incoming.get('cookie') || '', origin: getOrigin(incoming), 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', redirect: 'error' });
   if (response.status === 401) redirect('/login');
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
@@ -22,7 +30,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   const incoming = await headers();
-  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'PATCH', headers: { cookie: incoming.get('cookie') || '', origin: incoming.get('origin') || '', 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', redirect: 'error' });
+  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'PATCH', headers: { cookie: incoming.get('cookie') || '', origin: getOrigin(incoming), 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', redirect: 'error' });
   if (response.status === 401) redirect('/login');
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
@@ -33,7 +41,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 
 export async function apiDelete<T>(path: string): Promise<T> {
   const incoming = await headers();
-  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'DELETE', headers: { cookie: incoming.get('cookie') || '', origin: incoming.get('origin') || '', 'Content-Type': 'application/json' }, cache: 'no-store', redirect: 'error' });
+  const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), { method: 'DELETE', headers: { cookie: incoming.get('cookie') || '', origin: getOrigin(incoming), 'Content-Type': 'application/json' }, cache: 'no-store', redirect: 'error' });
   if (response.status === 401) redirect('/login');
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));

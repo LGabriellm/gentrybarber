@@ -6,7 +6,9 @@ export async function websiteAction(id: string, operation: 'drafts' | 'transitio
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id) || !['drafts', 'transitions'].includes(operation)) return { error: 'Operação inválida.' };
   const incoming = await headers();
   try {
-    const originHeader = incoming.get('origin') || `http://${incoming.get('host')}`;
+    const host = incoming.get('host') || 'localhost';
+    const proto = incoming.get('x-forwarded-proto') || (process.env.NODE_ENV === 'production' ? 'https' : 'http');
+    const originHeader = incoming.get('origin') || `${proto}://${host}`;
     const response = await fetch(new URL(`/v1/admin/tenants/${id}/website/${operation}`, process.env.API_URL || 'http://localhost:4000'), { method: 'POST', cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(15000), headers: { 'content-type': 'application/json', cookie: incoming.get('cookie') ?? '', origin: originHeader }, body: JSON.stringify(body) });
     if (response.ok) return { success: true };
     const messages: Record<number, string> = { 400: 'Revise os textos, as cores e o tema selecionado.', 401: 'Entre novamente para continuar.', 403: 'Confira o acesso administrativo e o recurso de site no plano.', 404: 'Barbearia ou versão não encontrada.', 409: 'O site mudou ou a versão não está pronta para esta ação. Recarregue os dados.' };
