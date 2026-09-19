@@ -5,6 +5,7 @@ import type { PlatformConfig } from '@platform/config';
 import type { NotificationProvider } from '@platform/notifications';
 
 export function createAuth(db: PrismaClient, config: PlatformConfig, email: NotificationProvider) {
+  const requireSecure = config.NODE_ENV === 'production' && config.BETTER_AUTH_URL.startsWith('https://');
   return betterAuth({
     appName: config.PLATFORM_NAME,
     baseURL: config.BETTER_AUTH_URL,
@@ -29,8 +30,8 @@ export function createAuth(db: PrismaClient, config: PlatformConfig, email: Noti
     rateLimit: { enabled: true, window: 60, max: 30, storage: 'database' },
     advanced: {
       ipAddress: { ipAddressHeaders: ['x-platform-client-ip'] },
-      useSecureCookies: config.NODE_ENV === 'production',
-      defaultCookieAttributes: { httpOnly: true, sameSite: 'lax', secure: config.NODE_ENV === 'production', path: '/' },
+      useSecureCookies: requireSecure,
+      defaultCookieAttributes: { httpOnly: true, sameSite: 'lax', secure: requireSecure, path: '/' },
     },
   });
 }
