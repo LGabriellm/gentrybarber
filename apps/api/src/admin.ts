@@ -59,12 +59,22 @@ export class AdminService {
     }, { isolationLevel: 'RepeatableRead' });
   }
   async createUser(actorUserId: string, body: unknown) {
-    const input = z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().toLowerCase().max(254).email(), role: z.enum(['SUPER_ADMIN', 'USER']).default('USER') }).strict().parse(body);
+    const input = z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().toLowerCase().max(254).email(), role: z.enum(['SUPER_ADMIN', 'USER']).default('USER'), emailVerified: z.boolean().default(false), tenantSlug: z.string().trim().max(63).optional() }).strict().parse(body);
     return this.db.$transaction(async tx => {
       const existing = await tx.user.findUnique({ where: { email: input.email } });
       if (existing) throw new AccessError('CONFLICT');
-      const user = await tx.user.create({ data: { id: crypto.randomUUID(), name: input.name, email: input.email, emailVerified: false, platformRole: input.role } });
-      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_created', resource: 'User', resourceId: user.id } });
+      const user = await tx.user.create({ data: { id: crypto.randomUUID(), name: input.name, email: input.email, emailVerified: input.emailVerified, platformRole: input.role } });
+      if (input.tenantSlug) {
+        const tenant = await tx.tenant.findUnique({ where: { slug: input.tenantSlug }, select: { id: true } });
+        if (!tenant) throw new AccessError('NOT_FOUND');
+        const role = await tx.role.findUnique({ where: { key: 'OWNER' } });
+        if (!role) throw new AccessError('FEATURE_DISABLED');
+        const existingMembership = await tx.membership.findUnique({ where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } } });
+        if (!existingMembership) {
+          await tx.membership.create({ data: { tenantId: tenant.id, userId: user.id, roleId: role.id, status: 'ACTIVE' } });
+        }
+      }
+      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_created', resource: 'User', resourceId: user.id, metadata: { emailVerified: input.emailVerified, tenantSlug: input.tenantSlug ?? null } } });
       return { id: user.id, email: user.email };
     });
   }
@@ -74,8 +84,8 @@ export class AdminService {
       const existing = await tx.plan.findUnique({ where: { key: input.key } });
       if (existing) throw new AccessError('CONFLICT');
       const base = input.basePlanId ? await tx.plan.findFirst({ where: { id: input.basePlanId, active: true }, include: { features: true } }) : null;
-      if (input.basePlanId && (!base || !base.features.some(feature => feature.enabled))) throw new AccessError('INVALID_INPUT');
-      const plan = await tx.plan.create({ data: { key: input.key, name: input.name, description: input.description, monthlyPriceCents: input.monthlyPriceCents, setupFeeCents: input.setupFeeCents, customDesignFeeCents: input.customDesignFeeCents, active: !!base } });
+      if (input.basePlanId && !base) throw new AccessError('INVALID_INPUT');
+      const plan = await tx.plan.create({ data: { key: input.key, name: input.name, description: input.description, monthlyPriceCents: input.monthlyPriceCents, setupFeeCents: input.setupFeeCents, customDesignFeeCents: input.customDesignFeeCents, active: true } });
       if (base) await tx.planFeature.createMany({ data: base.features.map(feature => ({ planId: plan.id, featureId: feature.featureId, enabled: feature.enabled, limit: feature.limit })) });
       await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.plan_created', resource: 'Plan', resourceId: plan.id } });
       return { id: plan.id, key: plan.key };
@@ -110,6 +120,31 @@ export class AdminService {
       const changed = await tx.tenant.updateMany({ where: { id, updatedAt: new Date(expectedUpdatedAt) }, data: { ...fields, updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1)) } });
       if (changed.count !== 1) throw new AccessError('CONFLICT');
       await tx.auditLog.create({ data: { tenantId: id, actorUserId, action: 'admin.tenant_updated', resource: 'Tenant', resourceId: id, metadata: { previousStatus: current.status, status: data.status, previousPlanId: current.planId, planId: data.planId } } });
+      return { success: true };
+    });
+  }
+  async updatePlan(actorUserId: string, id: string, body: unknown) {
+    identifier.parse(id);
+    const data = z.object({ name: z.string().trim().min(2).max(120).optional(), description: z.string().max(500).nullable().optional(), monthlyPriceCents: z.number().int().min(0).max(2147483647).optional(), setupFeeCents: z.number().int().min(0).max(2147483647).optional(), customDesignFeeCents: z.number().int().min(0).max(2147483647).optional(), active: z.boolean().optional() }).strict().parse(body);
+    return this.db.$transaction(async tx => {
+      const current = await tx.plan.findUnique({ where: { id } });
+      if (!current) throw new AccessError('NOT_FOUND');
+      await tx.plan.update({ where: { id }, data });
+      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.plan_updated', resource: 'Plan', resourceId: id, metadata: { previousActive: current.active, ...data } } });
+      return { success: true };
+    });
+  }
+  async deletePlan(actorUserId: string, id: string) {
+    identifier.parse(id);
+    return this.db.$transaction(async tx => {
+      const current = await tx.plan.findUnique({ where: { id } });
+      if (!current) throw new AccessError('NOT_FOUND');
+      const tenantCount = await tx.tenant.count({ where: { planId: id } });
+      const subscriptionCount = await tx.subscription.count({ where: { planId: id } });
+      if (tenantCount > 0 || subscriptionCount > 0) throw new AccessError('CONFLICT');
+      await tx.planFeature.deleteMany({ where: { planId: id } });
+      await tx.plan.delete({ where: { id } });
+      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.plan_deleted', resource: 'Plan', resourceId: id, metadata: { key: current.key, name: current.name } } });
       return { success: true };
     });
   }

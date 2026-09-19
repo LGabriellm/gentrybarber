@@ -1,6 +1,6 @@
 export interface AdminTenant { id: string; name: string; slug: string; status: string; createdAt: string; plan: { name: string }; memberships: { user: { name: string; email: string } }[] }
 export interface AdminUser { id: string; name: string; email: string; emailVerified: boolean; platformRole: string; createdAt: string }
-export interface AdminPlan { id: string; name: string; description: string | null; active: boolean; monthlyPriceCents: number; setupFeeCents: number; customDesignFeeCents: number }
+export interface AdminPlan { id: string; key: string; name: string; description: string | null; active: boolean; monthlyPriceCents: number; setupFeeCents: number; customDesignFeeCents: number }
 export interface AdminPage<T> { items: T[]; total: number; page: number; pageSize: number }
 export const count = (value: number) => new Intl.NumberFormat('pt-BR').format(value);
 export const money = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value / 100);

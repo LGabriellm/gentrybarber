@@ -122,7 +122,7 @@ export class FoundationServices {
   async adminPlans(request: FastifyRequest) {
     await this.requireSuperAdmin(request);
     z.object({}).strict().parse(request.query);
-    return this.db.plan.findMany({ orderBy: [{ monthlyPriceCents: 'asc' }, { id: 'asc' }], select: { id: true, name: true, description: true, active: true, monthlyPriceCents: true, setupFeeCents: true, customDesignFeeCents: true } });
+    return this.db.plan.findMany({ orderBy: [{ monthlyPriceCents: 'asc' }, { id: 'asc' }], select: { id: true, key: true, name: true, description: true, active: true, monthlyPriceCents: true, setupFeeCents: true, customDesignFeeCents: true } });
   }
   async adminCreateUser(request: FastifyRequest, body: unknown) {
     const session = await this.requireSuperAdmin(request);
@@ -133,6 +133,16 @@ export class FoundationServices {
     const session = await this.requireSuperAdmin(request);
     this.adminWrite(request);
     return new AdminService(this.db).createPlan(session.user.id, body);
+  }
+  async adminUpdatePlan(request: FastifyRequest, id: string, body: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).updatePlan(session.user.id, id, body);
+  }
+  async adminDeletePlan(request: FastifyRequest, id: string) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).deletePlan(session.user.id, id);
   }
   async adminCreateTenant(request: FastifyRequest, body: unknown) {
     const session = await this.requireSuperAdmin(request);

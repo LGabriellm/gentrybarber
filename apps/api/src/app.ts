@@ -3,6 +3,7 @@ import {
   Body,
   Catch,
   Controller,
+  Delete,
   Get,
   Inject,
   Module,
@@ -189,6 +190,18 @@ class FoundationController {
   @ApiCookieAuth()
   adminCreatePlan(@Req() request: FastifyRequest, @Body() body: unknown) {
     return this.services.adminCreatePlan(request, body);
+  }
+
+  @Patch("/v1/admin/plans/:id")
+  @ApiCookieAuth()
+  adminUpdatePlan(@Req() request: FastifyRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.services.adminUpdatePlan(request, id, body);
+  }
+
+  @Delete("/v1/admin/plans/:id")
+  @ApiCookieAuth()
+  adminDeletePlan(@Req() request: FastifyRequest, @Param("id") id: string) {
+    return this.services.adminDeletePlan(request, id);
   }
 
   @Get("/v1/admin/tenants")
