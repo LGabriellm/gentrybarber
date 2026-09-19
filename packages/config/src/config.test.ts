@@ -7,7 +7,7 @@ const base = {
   BETTER_AUTH_URL: 'http://localhost:4000', TRUSTED_ORIGINS: 'http://localhost:3000, http://localhost:3001',
   REDIS_URL: 'redis://localhost:6379', SMTP_HOST: 'localhost', SMTP_FROM: 'BarberHub <no-reply@barber.test>',
 };
-const production = { ...base, NODE_ENV: 'production', BETTER_AUTH_URL: 'https://api.barber.test', TRUSTED_ORIGINS: 'https://app.barber.test,https://admin.barber.test' };
+const production = { ...base, NODE_ENV: 'production', PLATFORM_DOMAIN: 'barber.test', BETTER_AUTH_URL: 'https://api.barber.test', TRUSTED_ORIGINS: 'https://app.barber.test,https://admin.barber.test' };
 
 describe('platform configuration boundary', () => {
   it('requires server secrets and database configuration', () => {
