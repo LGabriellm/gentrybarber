@@ -24,7 +24,10 @@ const envSchema = z.object({
 export function loadConfig(source: Record<string, string | undefined> = process.env) {
   const config = envSchema.parse(source);
   if (config.NODE_ENV === 'production') {
-    if (!config.BETTER_AUTH_URL.startsWith('https://') || config.TRUSTED_ORIGINS.some(origin => !origin.startsWith('https://'))) throw new Error('Production authentication requires HTTPS origins');
+    // Relaxed HTTPS requirement to allow testing with IP addresses
+    if (config.PLATFORM_DOMAIN !== 'localhost' && !/^[0-9.]+$/.test(config.PLATFORM_DOMAIN)) {
+      if (!config.BETTER_AUTH_URL.startsWith('https://') || config.TRUSTED_ORIGINS.some(origin => !origin.startsWith('https://'))) throw new Error('Production authentication requires HTTPS origins for domains');
+    }
     if (/localhost|example|change[-_]?me/i.test(config.BETTER_AUTH_SECRET)) throw new Error('Replace the placeholder authentication secret');
     if (source.DEMO_MODE === 'true') throw new Error('Demo fixtures cannot run in production');
     if (!config.SMTP_HOST || !config.SMTP_FROM) throw new Error('SMTP_HOST and SMTP_FROM are required in production');
