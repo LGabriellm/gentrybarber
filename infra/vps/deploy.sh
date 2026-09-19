@@ -24,9 +24,12 @@ if [ ! -f .env.production ]; then
   AUTH_SECRET=$(openssl rand -hex 32)
   sed -i "s/CHANGE_ME_STRONG_PASSWORD_HERE/$DB_PASS/g" .env.production
   sed -i "s/CHANGE_ME_AT_LEAST_32_CHARS/$AUTH_SECRET/g" .env.production
-  # Set dummy values for empty required fields to pass validation initially
-  sed -i "s/SMTP_HOST=/SMTP_HOST=localhost/g" .env.production
 fi
+
+# Ensure empty required variables have fallback values so Docker Compose doesn't crash
+sed -i "s/^SMTP_HOST=\r*$/SMTP_HOST=localhost/g" .env.production
+sed -i "s/^SMTP_USER=\r*$/SMTP_USER=user/g" .env.production
+sed -i "s/^SMTP_PASSWORD=\r*$/SMTP_PASSWORD=pass/g" .env.production
 
 # ── 2. Build images ──────────────────────────────────────────────
 echo "[2/6] Building Docker images..."
