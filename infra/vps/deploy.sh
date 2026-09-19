@@ -26,10 +26,13 @@ if [ ! -f .env.production ]; then
   sed -i "s/CHANGE_ME_AT_LEAST_32_CHARS/$AUTH_SECRET/g" .env.production
 fi
 
+# Strip any Windows carriage returns that might break regex matching
+sed -i 's/\r$//' .env.production
+
 # Ensure empty required variables have fallback values so Docker Compose doesn't crash
-sed -i "s/^SMTP_HOST=\r*$/SMTP_HOST=localhost/g" .env.production
-sed -i "s/^SMTP_USER=\r*$/SMTP_USER=user/g" .env.production
-sed -i "s/^SMTP_PASSWORD=\r*$/SMTP_PASSWORD=pass/g" .env.production
+sed -i "s/^SMTP_HOST=[[:space:]]*$/SMTP_HOST=localhost/g" .env.production
+sed -i "s/^SMTP_USER=[[:space:]]*$/SMTP_USER=user/g" .env.production
+sed -i "s/^SMTP_PASSWORD=[[:space:]]*$/SMTP_PASSWORD=pass/g" .env.production
 
 # ── 2. Build images ──────────────────────────────────────────────
 echo "[2/6] Building Docker images..."
