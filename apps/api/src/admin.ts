@@ -125,10 +125,16 @@ export class AdminService {
   }
   async updatePlan(actorUserId: string, id: string, body: unknown) {
     identifier.parse(id);
-    const data = z.object({ name: z.string().trim().min(2).max(120).optional(), description: z.string().max(500).nullable().optional(), monthlyPriceCents: z.number().int().min(0).max(2147483647).optional(), setupFeeCents: z.number().int().min(0).max(2147483647).optional(), customDesignFeeCents: z.number().int().min(0).max(2147483647).optional(), active: z.boolean().optional() }).strict().parse(body);
+    const { action, ...data } = z.object({ action: z.string().optional(), name: z.string().trim().min(2).max(120).optional(), description: z.string().max(500).nullable().optional(), monthlyPriceCents: z.number().int().min(0).max(2147483647).optional(), setupFeeCents: z.number().int().min(0).max(2147483647).optional(), customDesignFeeCents: z.number().int().min(0).max(2147483647).optional(), active: z.boolean().optional() }).strict().parse(body);
     return this.db.$transaction(async tx => {
       const current = await tx.plan.findUnique({ where: { id } });
       if (!current) throw new AccessError('NOT_FOUND');
+      if (action === 'delete') {
+        const tenant = await tx.tenant.findFirst({ where: { planId: id } });
+        if (tenant) throw new AccessError('CONFLICT');
+        await tx.plan.delete({ where: { id } });
+        return { id };
+      }
       await tx.plan.update({ where: { id }, data });
       await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.plan_updated', resource: 'Plan', resourceId: id, metadata: { previousActive: current.active, ...data } } });
       return { success: true };
