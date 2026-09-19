@@ -28,6 +28,7 @@
     "db:seed": "pnpm --filter @platform/database db:seed",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build",
     "access:grant": "node --env-file-if-exists=.env --import tsx scripts/grant-access.ts",
+    "access:superadmin": "node --env-file-if-exists=.env --import tsx scripts/make-superadmin.ts",
     "test:runtime": "node --env-file-if-exists=.env scripts/smoke-build.mjs",
     "test:frontends": "node scripts/smoke-frontends.mjs",
     "db:migrate:test": "node --env-file-if-exists=.env scripts/migrate-test.mjs",

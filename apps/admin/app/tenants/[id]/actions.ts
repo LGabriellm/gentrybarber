@@ -8,9 +8,10 @@ export async function saveBarbershop(id: string, kind: 'details' | 'location', l
   const incoming = await headers();
   const path = `/v1/admin/tenants/${id}${kind === 'location' ? `/locations${locationId ? `/${locationId}` : ''}` : ''}`;
   try {
+    const originHeader = incoming.get('origin') || `http://${incoming.get('host')}`;
     const response = await fetch(new URL(path, process.env.API_URL || 'http://localhost:4000'), {
       method: kind === 'location' && !locationId ? 'POST' : 'PATCH', cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(15000),
-      headers: { 'content-type': 'application/json', cookie: incoming.get('cookie') ?? '', origin: incoming.get('origin') ?? '' }, body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json', cookie: incoming.get('cookie') ?? '', origin: originHeader }, body: JSON.stringify(body),
     });
     if (response.ok) return { saved: true };
     const messages: Record<number, string> = {
