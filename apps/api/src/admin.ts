@@ -84,8 +84,8 @@ export class AdminService {
       const existing = await tx.plan.findUnique({ where: { key: input.key } });
       if (existing) throw new AccessError('CONFLICT');
       const base = input.basePlanId ? await tx.plan.findFirst({ where: { id: input.basePlanId, active: true }, include: { features: true } }) : null;
-      if (input.basePlanId && !base) throw new AccessError('INVALID_INPUT');
-      const plan = await tx.plan.create({ data: { key: input.key, name: input.name, description: input.description, monthlyPriceCents: input.monthlyPriceCents, setupFeeCents: input.setupFeeCents, customDesignFeeCents: input.customDesignFeeCents, active: true } });
+      if (input.basePlanId && (!base || !base.features.some(feature => feature.enabled))) throw new AccessError('INVALID_INPUT');
+      const plan = await tx.plan.create({ data: { key: input.key, name: input.name, description: input.description, monthlyPriceCents: input.monthlyPriceCents, setupFeeCents: input.setupFeeCents, customDesignFeeCents: input.customDesignFeeCents, active: !!base } });
       if (base) await tx.planFeature.createMany({ data: base.features.map(feature => ({ planId: plan.id, featureId: feature.featureId, enabled: feature.enabled, limit: feature.limit })) });
       await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.plan_created', resource: 'Plan', resourceId: plan.id } });
       return { id: plan.id, key: plan.key };
