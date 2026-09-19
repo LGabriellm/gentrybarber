@@ -6,9 +6,7 @@ export async function createTenantAction(formData: FormData): Promise<{ error?: 
   const incoming = await headers();
   const body = Object.fromEntries(['name', 'slug', 'planId', 'ownerEmail', 'timezone'].map(key => [key, formData.get(key)]));
   try {
-    const host = incoming.get('host') || 'localhost';
-    const proto = incoming.get('x-forwarded-proto') || (process.env.NODE_ENV === 'production' ? 'https' : 'http');
-    const originHeader = incoming.get('origin') || `${proto}://${host}`;
+    const originHeader = incoming.get('origin') || '';
     const response = await fetch(new URL('/v1/admin/tenants', process.env.API_URL || 'http://localhost:4000'), {
       method: 'POST', cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(15000),
       headers: { 'content-type': 'application/json', cookie: incoming.get('cookie') ?? '', origin: originHeader }, body: JSON.stringify(body),

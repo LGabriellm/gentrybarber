@@ -2,11 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 function getOrigin(incoming: Headers) {
-  const origin = incoming.get('origin');
-  if (origin) return origin;
-  const host = incoming.get('host') || 'localhost';
-  const proto = incoming.get('x-forwarded-proto') || (process.env.NODE_ENV === 'production' ? 'https' : 'http');
-  return `${proto}://${host}`;
+  return incoming.get('origin') || '';
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
