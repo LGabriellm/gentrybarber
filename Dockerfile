@@ -8,20 +8,20 @@ RUN apt-get update \
     && npm install --global pnpm@11.19.0
 WORKDIR /workspace
 
-FROM base AS build
-ARG APP=api
-RUN case "$APP" in api|worker) ;; *) echo "APP must be api or worker" >&2; exit 1 ;; esac
+FROM base AS deps
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm db:generate
+
+FROM deps AS build
+ARG APP=api
+RUN case "$APP" in api|worker) ;; *) echo "APP must be api or worker" >&2; exit 1 ;; esac
 RUN pnpm --filter "@platform/${APP}" build
 
-FROM base AS frontend-build
+FROM deps AS frontend-build
 ARG APP=web-public
 RUN case "$APP" in web-public|dashboard|admin) ;; *) echo "Invalid frontend APP" >&2; exit 1 ;; esac
 ENV NEXT_STANDALONE=1 NEXT_TELEMETRY_DISABLED=1
-COPY . .
-RUN pnpm install --frozen-lockfile
 RUN pnpm --filter "@platform/${APP}" build
 RUN mkdir -p "apps/${APP}/public"
 
