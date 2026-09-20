@@ -4,6 +4,8 @@ name: barber-platform-prod
 
 x-backend-environment: &backend-environment
   NODE_ENV: production
+  PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?Set PLATFORM_DOMAIN}
+  PLATFORM_NAME: ${PLATFORM_NAME:-BarberHub}
   DATABASE_URL: postgresql://platform:${POSTGRES_PASSWORD:?}@postgres:5432/platform
   REDIS_URL: redis://redis:6379
   BIND_HOST: 0.0.0.0
