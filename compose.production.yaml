@@ -33,9 +33,6 @@ x-frontend: &frontend
     API_URL: http://api:4000
     PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?Set PLATFORM_DOMAIN}
     PLATFORM_NAME: ${PLATFORM_NAME:-BarberHub}
-  depends_on:
-    api:
-      condition: service_healthy
 
 services:
   # ── Infrastructure ─────────────────────────────────────────────
@@ -148,6 +145,9 @@ services:
       target: frontend
       args: { APP: web-public }
     ports: ['0.0.0.0:3000:3000']
+    depends_on:
+      api:
+        condition: service_healthy
 
   dashboard:
     <<: *frontend
@@ -156,6 +156,9 @@ services:
       target: frontend
       args: { APP: dashboard }
     ports: ['0.0.0.0:3001:3000']
+    depends_on:
+      api:
+        condition: service_healthy
 
   admin:
     <<: *frontend
@@ -164,6 +167,9 @@ services:
       target: frontend
       args: { APP: admin }
     ports: ['0.0.0.0:3002:3000']
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres-data:
