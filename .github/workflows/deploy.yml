@@ -42,6 +42,8 @@ jobs:
             fi
             
             cd /opt/barber-platform
+            git fetch origin main
+            git reset --hard origin/main
             
             # Run setup only on first deploy (it's already done on this VPS)
             if [ ! -f /opt/.barber-setup-done ]; then

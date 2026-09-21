@@ -34,6 +34,15 @@ sed -i "s/^SMTP_HOST=[[:space:]]*$/SMTP_HOST=localhost/g" .env.production
 sed -i "s/^SMTP_USER=[[:space:]]*$/SMTP_USER=user/g" .env.production
 sed -i "s/^SMTP_PASSWORD=[[:space:]]*$/SMTP_PASSWORD=pass/g" .env.production
 
+# Ensure production domain is configured (defaults to gentryhub.tech on VPS)
+if grep -q '^PLATFORM_DOMAIN=localhost' .env.production || grep -q '^PLATFORM_DOMAIN=[[:space:]]*$' .env.production || ! grep -q '^PLATFORM_DOMAIN=' .env.production; then
+  if grep -q '^PLATFORM_DOMAIN=' .env.production; then
+    sed -i "s/^PLATFORM_DOMAIN=.*$/PLATFORM_DOMAIN=gentryhub.tech/g" .env.production
+  else
+    echo "PLATFORM_DOMAIN=gentryhub.tech" >> .env.production
+  fi
+fi
+
 # ── 2. Build images ──────────────────────────────────────────────
 echo "[2/7] Building Docker images..."
 docker compose --env-file .env.production -f "$COMPOSE_FILE" build 2>&1 | tee -a "$LOG_FILE"
@@ -58,7 +67,7 @@ trap 'rm -f "$RENDERED_CADDY"' EXIT
 sed "s/{{PLATFORM_DOMAIN}}/$PLATFORM_DOMAIN_VALUE/g" infra/vps/Caddyfile > "$RENDERED_CADDY"
 sudo caddy validate --config "$RENDERED_CADDY" --adapter caddyfile 2>&1 | tee -a "$LOG_FILE"
 sudo install -m 0644 "$RENDERED_CADDY" /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+sudo systemctl reload-or-restart caddy || sudo systemctl restart caddy
 
 # ── 6. Wait for health ───────────────────────────────────────────
 echo "[6/7] Waiting for services to become healthy..."
