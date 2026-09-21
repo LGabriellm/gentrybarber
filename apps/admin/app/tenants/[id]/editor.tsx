@@ -8,6 +8,7 @@ export interface AdminLocation { id: string; name: string; slug: string; timezon
 export interface BarbershopDetail {
   id: string; name: string; slug: string; status: string; planId: string; timezone: string; email: string | null; phone: string | null; whatsapp: string | null; updatedAt: string;
   plan: { id: string; name: string; active: boolean }; locations: AdminLocation[];
+  siteConfiguration: { published: boolean; publishedThemeVersionId: string | null } | null;
   memberships: { id: string; status: string; role: { name: string; key: string }; user: { name: string; email: string } }[];
   _count: { services: number; professionals: number };
 }

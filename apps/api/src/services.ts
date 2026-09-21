@@ -54,8 +54,11 @@ export class FoundationServices {
   }
   async me(request: FastifyRequest) {
     const { user } = await this.session(request);
-    const records = await this.db.membership.findMany({ where: { userId: user.id, status: 'ACTIVE', tenant: { status: 'ACTIVE' } }, select: { id: true, role: { select: { key: true } }, tenant: { select: { id: true, name: true, slug: true } } }, orderBy: { createdAt: 'asc' } });
-    return { user: { id: user.id, name: user.name, email: user.email }, memberships: records.map(record => ({ ...record, role: record.role.key })) };
+    const [identity, records] = await Promise.all([
+      this.db.user.findUniqueOrThrow({ where: { id: user.id }, select: { platformRole: true } }),
+      this.db.membership.findMany({ where: { userId: user.id, status: 'ACTIVE', tenant: { status: 'ACTIVE' } }, select: { id: true, role: { select: { key: true } }, tenant: { select: { id: true, name: true, slug: true } } }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    return { user: { id: user.id, name: user.name, email: user.email, platformRole: identity.platformRole }, memberships: records.map(record => ({ ...record, role: record.role.key })) };
   }
   async site(context: TenantContext, id?: string) {
     return this.contexts.run(context, async () => {

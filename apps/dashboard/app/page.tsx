@@ -1,6 +1,7 @@
 import { featureLabels, roleLabels } from '@platform/web-kit';
 import { platformName } from '@platform/config';
 import { apiGet } from '@platform/web-kit/server';
+import { headers } from 'next/headers';
 import { SignOutButton } from '@platform/web-kit/auth-form';
 import { OnboardingForm } from '../components/onboarding-form';
 import type { AccountView, ContextView, FeatureView } from '@platform/web-kit';
@@ -37,6 +38,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const solo = setup?.activeProfessionalsCount === 1;
   const oneLocation = setup?.locationsCount === 1;
   const name = platformName();
+  const globalAdmin = me.user.platformRole === 'SUPER_ADMIN';
+  const incoming = await headers();
+  const dashboardHost = incoming.get('host') || 'localhost:3001';
+  const adminUrl = process.env.ADMIN_URL || `http://${dashboardHost.replace(/:3001$/, ':3002')}`;
   const href = context ? '/tenants/' + encodeURIComponent(context.tenant.slug) : '';
   const finance = permitted('reports.read');
   const routine = [
@@ -53,7 +58,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   return <div className="shell dashboard-home dashboard-workspace">
     <header className="topbar"><a className="brand" href="/"><span className="brand-mark">{name[0]}</span>{name}</a><SignOutButton /></header>
     <main className="main">
-      {!context ? <><div className="intro"><span className="eyebrow">Comece por aqui</span><h1>Olá, {me.user.name.split(' ')[0]}.</h1><p>Cadastre sua barbearia para organizar os serviços e começar a atender.</p></div><OnboardingForm /></> : <>
+      {!context ? globalAdmin ? <div className="intro"><span className="eyebrow">Administração da plataforma</span><h1>Olá, {me.user.name.split(' ')[0]}.</h1><p>Sua conta possui autoridade global. O acesso operacional de cada barbearia continua separado para proteger os dados dos clientes.</p><a className="button" href={adminUrl}>Abrir administração global <span aria-hidden="true">↗</span></a></div> : <><div className="intro"><span className="eyebrow">Comece por aqui</span><h1>Olá, {me.user.name.split(' ')[0]}.</h1><p>Cadastre sua barbearia para organizar os serviços e começar a atender.</p></div><OnboardingForm /></> : <>
         {me.memberships.length > 1 && <nav className="tenant-nav" aria-label="Selecionar barbearia">{me.memberships.map(m => <a key={m.id} href={'/?tenant=' + encodeURIComponent(m.tenant.slug)} aria-current={m.tenant.slug === context.tenant.slug ? 'page' : undefined}>{m.tenant.name}</a>)}</nav>}
         <section className="dashboard-welcome"><div><span className="eyebrow">Seu espaço de trabalho</span><h1>{context.tenant.name}</h1><p>{solo ? 'Sua rotina, do primeiro horário ao último atendimento.' : 'Tudo o que você precisa para organizar os atendimentos e cuidar da barbearia.'}</p>{solo && <span className="dashboard-context">Atendimento com {setup?.soloProfessionalName}</span>}</div>{agenda && <a className="button" href={href + '/agenda'}>Abrir agenda <span aria-hidden="true">↗</span></a>}</section>
         {setup && (!setup.hasActiveServices || setup.activeProfessionalsCount === 0) && <aside className="dashboard-setup"><strong>Prepare sua agenda</strong><p>Cadastre os serviços e quem realiza os atendimentos. Depois, defina os horários de funcionamento para liberar as reservas.</p></aside>}

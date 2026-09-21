@@ -34,6 +34,7 @@ x-frontend: &frontend
         memory: 512M
   environment:
     API_URL: http://api:4000
+    ADMIN_URL: ${ADMIN_URL:-}
     PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?Set PLATFORM_DOMAIN}
     PLATFORM_NAME: ${PLATFORM_NAME:-BarberHub}
 

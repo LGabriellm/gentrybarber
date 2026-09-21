@@ -73,6 +73,7 @@ describe('Global administration', () => {
     const path = `/v1/admin/tenants/${tenant.id}`;
     const detail = (await bookingGet(path)).json();
     expect(detail.memberships[0].user.email).toBe(input().ownerEmail);
+    expect(detail.siteConfiguration).toBeNull();
     const payload = { name: 'Barbearia atualizada', phone: '+55 11 99999-0000', whatsapp: null, email: 'contato@example.test', timezone: 'America/Sao_Paulo', status: 'ACTIVE', planId, expectedUpdatedAt: detail.updatedAt };
     expect((await bookingWrite('PATCH', path, payload, { origin: null })).statusCode).toBe(403);
     expect((await bookingWrite('PATCH', path, { ...payload, slug: 'forbidden-change' })).statusCode).toBe(400);

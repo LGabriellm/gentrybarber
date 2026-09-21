@@ -226,7 +226,8 @@ describe('Foundation API with PostgreSQL and Better Auth', () => {
   it('returns only active memberships belonging to the signed-in user', async () => {
     const response = await get('/v1/me', primary.cookie);
     expect(response.statusCode).toBe(200);
-    const body = response.json<{ memberships: { tenant: { id: string } }[] }>();
+    const body = response.json<{ user: { platformRole: string }; memberships: { tenant: { id: string } }[] }>();
+    expect(body.user.platformRole).toBe('USER');
     expect(body.memberships.map(membership => membership.tenant.id).sort()).toEqual([ids.tenantA, ids.tenantLimited].sort());
   });
 

@@ -59,6 +59,10 @@ A workflow `frontend-images.yml` constrói cada imagem e verifica HTTP, assets e
 
 ## Release de produção planejado
 
+O deploy da VPS aplica de forma idempotente o `infra/vps/Caddyfile` para o domínio configurado e valida o caminho público `http://<slug>.<PLATFORM_DOMAIN>` preservando o header `Host`. O apex informa apenas o estado da plataforma; ele não seleciona uma barbearia. Esta etapa é deliberadamente HTTP: HTTPS wildcard continua bloqueado até existir DNS-01 ou on-demand TLS protegido por uma política de autorização de domínio. Enquanto isso, painel, admin e API permanecem nos endereços/portas declarados no ambiente. Não remover `BYPASS_HTTPS_CHECK` nem trocar origens para HTTPS parcialmente; a migração deve coordenar proxy, certificados, `BETTER_AUTH_URL`, `TRUSTED_ORIGINS` e `TRUST_PROXY_CIDRS`.
+
+Criar um tenant não publica automaticamente um site. A administração global exibe o estado de publicação e só oferece o endereço público depois do fluxo rascunho → aprovação → publicação. Um 404 antes da publicação é o isolamento esperado, não fallback para outro tenant.
+
 ### Proxy, cookies e IP de autenticação
 
 Em desenvolvimento os frontends encaminham `/api/auth/*` para a API por um proxy de mesma origem. Cookies ficam no host do painel/admin, sem compartilhamento com subdomínios de barbearias. Esse encaminhamento local agrupa conexões no IP do servidor Next.js.

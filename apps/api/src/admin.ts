@@ -22,6 +22,7 @@ export class AdminService {
     const tenant = await this.db.tenant.findUnique({ where: { id }, select: {
       id: true, name: true, slug: true, status: true, planId: true, timezone: true, email: true, phone: true, whatsapp: true, updatedAt: true,
       plan: { select: { id: true, name: true, active: true } },
+      siteConfiguration: { select: { published: true, publishedThemeVersionId: true } },
       locations: { orderBy: [{ active: 'desc' }, { name: 'asc' }] },
       memberships: { orderBy: { createdAt: 'asc' }, select: { id: true, status: true, role: { select: { name: true, key: true } }, user: { select: { name: true, email: true } } } },
       _count: { select: { services: true, professionals: true } },
@@ -74,7 +75,7 @@ export class AdminService {
           await tx.membership.create({ data: { tenantId: tenant.id, userId: user.id, roleId: role.id, status: 'ACTIVE' } });
         }
       }
-      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_created', resource: 'User', resourceId: user.id, metadata: { emailVerified: input.emailVerified, tenantSlug: input.tenantSlug ?? null } } });
+      await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_created', resource: 'User', resourceId: user.id, metadata: { role: input.role, emailVerified: input.emailVerified, tenantSlug: input.tenantSlug ?? null } } });
       return { id: user.id, email: user.email };
     });
   }

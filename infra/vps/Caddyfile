@@ -1,63 +1,22 @@
-# Caddy reverse proxy for barber-platform.
-# Place at /etc/caddy/Caddyfile on the VPS.
-# Caddy handles HTTPS certificates automatically via Let's Encrypt.
-#
-# IMPORTANT: Replace YOUR_DOMAIN below with the actual domain when ready.
-# Until a domain is configured, access services directly via VPS IP:
-#   http://187.77.235.234:4000  → API
-#   http://187.77.235.234:3000  → Web Public
-#   http://187.77.235.234:3001  → Dashboard
-#   http://187.77.235.234:3002  → Admin
-#
-# When you have a domain, uncomment and edit the blocks below.
+# Rendered by infra/vps/deploy.sh. The placeholder is replaced with PLATFORM_DOMAIN.
+# This first production ingress is intentionally HTTP-only. Wildcard HTTPS requires
+# DNS-01 or guarded on-demand TLS and must be introduced with the domain adapter.
 
-# ── Site público (barbearias) ────────────────────────────────────
-# example.com, www.example.com {
-# 	reverse_proxy localhost:3000
-# 	header {
-# 		X-Content-Type-Options nosniff
-# 		X-Frame-Options SAMEORIGIN
-# 		Referrer-Policy strict-origin-when-cross-origin
-# 		-Server
-# 	}
-# 	encode gzip zstd
-# }
+http://*.{{PLATFORM_DOMAIN}} {
+	reverse_proxy 127.0.0.1:3000
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	encode gzip zstd
+}
 
-# ── Dashboard (painel dos membros) ──────────────────────────────
-# app.example.com {
-# 	reverse_proxy localhost:3001
-# 	header {
-# 		X-Content-Type-Options nosniff
-# 		X-Frame-Options SAMEORIGIN
-# 		Referrer-Policy strict-origin-when-cross-origin
-# 		-Server
-# 	}
-# 	encode gzip zstd
-# }
+http://{{PLATFORM_DOMAIN}}, http://www.{{PLATFORM_DOMAIN}} {
+	respond "Barber Platform is running. Use the address of a published barbershop." 200
+}
 
-# ── Admin (administração global) ────────────────────────────────
-# admin.example.com {
-# 	reverse_proxy localhost:3002
-# 	header {
-# 		X-Content-Type-Options nosniff
-# 		X-Frame-Options SAMEORIGIN
-# 		Referrer-Policy strict-origin-when-cross-origin
-# 		-Server
-# 	}
-# 	encode gzip zstd
-# }
-
-# ── API backend ──────────────────────────────────────────────────
-# api.example.com {
-# 	reverse_proxy localhost:4000
-# 	header {
-# 		X-Content-Type-Options nosniff
-# 		-Server
-# 	}
-# 	encode gzip zstd
-# }
-
-# ── Temporary: serve all four apps via IP (HTTP only) ────────────
 :80 {
-	respond "Barber Platform is running. Configure a domain in the Caddyfile for HTTPS."
+	respond "Unknown host" 404
 }

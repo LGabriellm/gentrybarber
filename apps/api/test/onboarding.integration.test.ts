@@ -130,6 +130,12 @@ describe('Onboarding API', () => {
     expect(await db.auditLog.count({ where: { actorUserId: user.id, action: 'tenant.onboarded' } })).toBe(1);
   });
 
+  it('keeps global authority separate from tenant onboarding', async () => {
+    const user = await db.user.create({ data: { id: `${prefix}-global-admin`, name: 'Global fictitious administrator', email: `${prefix}-global-admin@example.test`, emailVerified: true, platformRole: 'SUPER_ADMIN' } });
+    await expect(services.onboarding.onboard(user.id, { tenantName: 'Tenant indevido', tenantSlug: `${prefix}-global-admin`, locationName: 'Central' })).rejects.toThrow('FORBIDDEN');
+    expect(await db.tenant.count({ where: { slug: `${prefix}-global-admin` } })).toBe(0);
+  });
+
   it('rejects duplicate slug', async () => {
     const payload = { tenantName: 'Outra Barbearia', tenantSlug: `${prefix}-barbearia-ze`, locationName: 'Unidade Central' };
     

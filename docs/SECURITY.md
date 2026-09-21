@@ -8,6 +8,8 @@ Better Auth gerencia login, logout, sessão, verificação de e-mail e recupera�
 
 Memberships da aplicação determinam acesso ao tenant. Roles previstas são OWNER, MANAGER, RECEPTIONIST e BARBER, com permissões explícitas como `website.manage`, `team.manage` e `billing.read`. SUPER_ADMIN é uma autoridade de plataforma separada; não transformar um role nomeado pelo tenant em acesso global. Ações privilegiadas precisam de auditoria e escopo explícito.
 
+O dashboard operacional não converte `SUPER_ADMIN` em membership. `/v1/me` pode sinalizar a autoridade global para encaminhar a pessoa ao back-office, mas operações `/v1/tenants/:slug/*` continuam exigindo membership ativa. Contas globais sem membership não executam o onboarding de tenant; qualquer acesso operacional deve ser concedido de forma explícita e auditada.
+
 2FA, passkeys e OAuth são preparação futura; não anunciar esses mecanismos como habilitados. Antes de produção, validar os fluxos de reset/verificação de e-mail, expiração, revogação e proteção contra enumeração com o provider configurado. A reserva pública não verifica a posse do telefone; limitar e acompanhar abuso por IP e destino antes de ampliar a operação.
 
 A versão instalada de Better Auth vincula contas externas pela chave composta `(issuer, accountId)`. A migration incremental preserva contas de senha com issuer `local:credential` e exige mapeamento explícito de provedores legados externos. Não inferir equivalência de identidade apenas pelo nome de provider ou e-mail.

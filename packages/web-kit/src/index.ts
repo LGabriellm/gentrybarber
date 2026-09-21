@@ -1,5 +1,5 @@
 export interface MembershipView { id: string; role: string; tenant: { id: string; slug: string; name: string } }
-export interface AccountView { user: { id: string; name: string; email: string }; memberships: MembershipView[] }
+export interface AccountView { user: { id: string; name: string; email: string; platformRole: 'USER' | 'SUPER_ADMIN' }; memberships: MembershipView[] }
 export interface ContextView { tenant: { id: string; slug: string; name: string; status: string }; role: string; permissions: string[] }
 export interface SiteView { id: string; title: string; description: string; themeId: string }
 export interface FeatureView { key: string; enabled: boolean; limit: number | null }

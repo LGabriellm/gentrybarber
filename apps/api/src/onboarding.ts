@@ -26,8 +26,8 @@ export class OnboardingService {
 
     return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`onboarding:${userId}`}, 0))`;
-      const user = await tx.user.findUnique({ where: { id: userId }, select: { emailVerified: true } });
-      if (!user?.emailVerified || await tx.membership.count({ where: { userId, status: 'ACTIVE' } })) throw new AccessError('FORBIDDEN');
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { emailVerified: true, platformRole: true } });
+      if (!user?.emailVerified || user.platformRole === 'SUPER_ADMIN' || await tx.membership.count({ where: { userId, status: 'ACTIVE' } })) throw new AccessError('FORBIDDEN');
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`onboarding-slug:${input.tenantSlug}`}, 0))`;
       // 1. Verify if slug is already taken
       const existing = await tx.tenant.findUnique({ where: { slug: input.tenantSlug } });

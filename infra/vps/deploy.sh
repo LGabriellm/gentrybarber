@@ -12,7 +12,7 @@ cd "$APP_DIR"
 echo "$(date -Iseconds) ── Deploy started ──" | tee -a "$LOG_FILE"
 
 # ── 1. Pull latest code ──────────────────────────────────────────
-echo "[1/6] Pulling latest code..."
+echo "[1/7] Pulling latest code..."
 git config --global --add safe.directory "$APP_DIR"
 git fetch origin main 2>&1 | tee -a "$LOG_FILE"
 git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
@@ -35,23 +35,37 @@ sed -i "s/^SMTP_USER=[[:space:]]*$/SMTP_USER=user/g" .env.production
 sed -i "s/^SMTP_PASSWORD=[[:space:]]*$/SMTP_PASSWORD=pass/g" .env.production
 
 # ── 2. Build images ──────────────────────────────────────────────
-echo "[2/6] Building Docker images..."
+echo "[2/7] Building Docker images..."
 docker compose --env-file .env.production -f "$COMPOSE_FILE" build 2>&1 | tee -a "$LOG_FILE"
 
 # ── 3. Run migrations ────────────────────────────────────────────
-echo "[3/6] Running database migrations..."
+echo "[3/7] Running database migrations..."
 docker compose --env-file .env.production -f "$COMPOSE_FILE" run --rm migrate 2>&1 | tee -a "$LOG_FILE"
 
 # ── 4. Restart services ──────────────────────────────────────────
-echo "[4/6] Restarting services..."
+echo "[4/7] Restarting services..."
 docker compose --env-file .env.production -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
 
-# ── 5. Wait for health ───────────────────────────────────────────
-echo "[5/6] Waiting for services to become healthy..."
+# ── 5. Configure ingress ─────────────────────────────────────────
+echo "[5/7] Configuring public ingress..."
+PLATFORM_DOMAIN_VALUE="$(sed -n 's/^PLATFORM_DOMAIN=//p' .env.production | tail -n 1 | tr -d '\r')"
+if [[ ! "$PLATFORM_DOMAIN_VALUE" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]; then
+  echo "Invalid PLATFORM_DOMAIN in .env.production" | tee -a "$LOG_FILE"
+  exit 1
+fi
+RENDERED_CADDY="$(mktemp)"
+trap 'rm -f "$RENDERED_CADDY"' EXIT
+sed "s/{{PLATFORM_DOMAIN}}/$PLATFORM_DOMAIN_VALUE/g" infra/vps/Caddyfile > "$RENDERED_CADDY"
+sudo caddy validate --config "$RENDERED_CADDY" --adapter caddyfile 2>&1 | tee -a "$LOG_FILE"
+sudo install -m 0644 "$RENDERED_CADDY" /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+
+# ── 6. Wait for health ───────────────────────────────────────────
+echo "[6/7] Waiting for services to become healthy..."
 sleep 15
 
-# ── 6. Health checks ─────────────────────────────────────────────
-echo "[6/6] Running health checks..."
+# ── 7. Health checks ─────────────────────────────────────────────
+echo "[7/7] Running health checks..."
 FAILED=0
 
 check_health() {
@@ -68,6 +82,12 @@ check_health "API readiness"  "http://127.0.0.1:4000/ready"
 check_health "Web Public"     "http://127.0.0.1:3000/api/health"
 check_health "Dashboard"      "http://127.0.0.1:3001/api/health"
 check_health "Admin"          "http://127.0.0.1:3002/api/health"
+if curl --fail --silent --max-time 10 -H "Host: healthcheck.$PLATFORM_DOMAIN_VALUE" "http://127.0.0.1/api/health" > /dev/null 2>&1; then
+  echo "  ✓ Public ingress preserves tenant hostnames"
+else
+  echo "  ✗ Public ingress FAILED" | tee -a "$LOG_FILE"
+  FAILED=1
+fi
 
 if [ "$FAILED" -eq 1 ]; then
   echo ""
