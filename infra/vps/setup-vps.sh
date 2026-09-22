@@ -80,7 +80,13 @@ fi
 # ── 7. App directory ─────────────────────────────────────────────
 echo "[7/8] Creating application directory..."
 mkdir -p "$APP_DIR"
-chown "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR"
+# The directory may already contain a clone created by root (for example by
+# hPanel). Git needs the whole worktree, including .git/FETCH_HEAD, writable by
+# the dedicated deploy operator.
+chown -R "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR"
+touch /var/log/barber-deploy.log
+chown "$DEPLOY_USER:$DEPLOY_USER" /var/log/barber-deploy.log
+chmod 0640 /var/log/barber-deploy.log
 
 # ── 8. Docker log rotation ───────────────────────────────────────
 echo "[8/8] Configuring Docker log rotation..."

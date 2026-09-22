@@ -27,6 +27,7 @@ describe('production network boundary', () => {
   it('uses HTTPS service URLs and key-based deployment authentication', () => {
     const environment = rootFile('.env.production.example');
     const workflow = rootFile('.github/workflows/deploy.yml');
+    const setup = rootFile('infra/vps/setup-vps.sh');
     expect(environment).toContain('BETTER_AUTH_URL=https://api.gentryhub.tech');
     expect(environment).toContain('TRUSTED_ORIGINS=https://dashboard.gentryhub.tech,https://admin.gentryhub.tech');
     expect(workflow).toContain('key: ${{ secrets.VPS_SSH_KEY }}');
@@ -35,5 +36,7 @@ describe('production network boundary', () => {
     expect(workflow).toContain('protocol: tcp4');
     expect(workflow).not.toContain('secrets.VPS_SSH_FINGERPRINT');
     expect(workflow).not.toContain('VPS_PASSWORD');
+    expect(setup).toContain('chown -R "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR"');
+    expect(setup).toContain('chown "$DEPLOY_USER:$DEPLOY_USER" /var/log/barber-deploy.log');
   });
 });

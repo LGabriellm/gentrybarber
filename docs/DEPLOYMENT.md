@@ -79,6 +79,8 @@ Os hostnames exatos obtêm HTTPS automático pelo Caddy e exigem registros DNS v
 
 No GitHub, configurar a variável `PLATFORM_DOMAIN` e os secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` e `VPS_SSH_PASSPHRASE`. A chave pública correspondente precisa estar em `authorized_keys` do operador da VPS antes de remover o secret legado de senha. O fingerprint SHA256 público da chave de host ECDSA fica fixado e revisável no workflow; ao recriar a VPS ou rotacionar as chaves SSH, confirmá-lo diretamente no servidor e atualizar o arquivo. O workflow força IPv4, valida API, dashboard e admin por HTTPS e falha se a porta 4000 continuar acessível externamente.
 
+Se um clone preexistente tiver sido criado por `root`, corrigir uma única vez pelo console administrativo da VPS com `chown -R deploy:deploy /opt/barber-platform`, seguido de `touch /var/log/barber-deploy.log`, `chown deploy:deploy /var/log/barber-deploy.log` e `chmod 0640 /var/log/barber-deploy.log`. O setup aplica essas propriedades de forma reproduzível; não ampliar o `chown` para `/opt` ou outro diretório.
+
 Criar um tenant não publica automaticamente um site. A administração global exibe o estado de publicação e só oferece o endereço público depois do fluxo rascunho → aprovação → publicação. Um 404 antes da publicação é o isolamento esperado, não fallback para outro tenant.
 
 ### Proxy, cookies e IP de autenticação
