@@ -278,12 +278,15 @@ test('HTML/CSS publicado com preços, agenda real e confirmação repetida sem d
     const version = siteConfig.publishedThemeVersionId ? await db.themeVersion.findUnique({ where: { id: siteConfig.publishedThemeVersionId } }) : null;
     return (version?.config as { code?: { html?: string } } | null)?.code?.html;
   }).toBe(html);
-  await page.goto(`http://${hostname}:3303/`);
-  const site = page.frameLocator('iframe[title="Site personalizado"]');
+  // The admin editor refreshes after publishing; keep its navigation separate from the public site.
+  const publicPage = await page.context().newPage();
+  publicPage.on('pageerror', error => errors.push(error.stack ?? error.message));
+  await publicPage.goto(`http://${hostname}:3303/`);
+  const site = publicPage.frameLocator('iframe[title="Site personalizado"]');
   await expect(site.getByRole('table')).toContainText('65,00');
-  const editorUrl = page.url();
+  const editorUrl = publicPage.url();
   await site.getByRole('link', { name: 'Reservar horário', exact: true }).click();
-  await expect(page).toHaveURL(editorUrl);
+  await expect(publicPage).toHaveURL(editorUrl);
   if (testInfo.project.name === 'webkit-ios') await expect(site.locator('#agenda')).toHaveCount(1);
   else { await expect(site.locator('#agenda')).toBeInViewport(); await expect(site.locator('#agenda')).toBeFocused(); }
   await expect(site.getByLabel('Unidade', { exact: true })).toHaveCount(0);
@@ -299,11 +302,11 @@ test('HTML/CSS publicado com preços, agenda real e confirmação repetida sem d
   await site.getByRole('button', { name: '09:00', exact: true }).click();
   await site.getByLabel('Nome completo').fill('Cliente de teste');
   await site.getByLabel('Celular (WhatsApp)', { exact: true }).fill('11999999876');
-  await page.screenshot({ path: testInfo.outputPath('website-public-booking.png'), fullPage: true });
+  await publicPage.screenshot({ path: testInfo.outputPath('website-public-booking.png'), fullPage: true });
   expect(await site.locator('body').evaluate(body => body.scrollWidth <= body.ownerDocument.documentElement.clientWidth)).toBe(true);
   // The first request reaches the real API; its receipt is deliberately lost in transit.
   const attempts: string[] = [];
-  await page.route('**/api/booking/appointments', async route => {
+  await publicPage.route('**/api/booking/appointments', async route => {
     attempts.push(route.request().postData()!);
     // Chromium resolves *.localhost internally; Node's request client needs loopback plus the original Host.
     const response = await route.fetch({ url: route.request().url().replace(hostname, '127.0.0.1'), headers: { ...route.request().headers(), host: `${hostname}:3303` } });
@@ -325,9 +328,9 @@ test('HTML/CSS publicado com preços, agenda real e confirmação repetida sem d
   expect(booking.totalCents).toBe(9000);
   expect(await db.appointmentService.count({ where: { tenantId: tenant.id, appointmentId: booking.id } })).toBe(2);
   const base = 'http://127.0.0.1:3303/api/booking';
-  expect((await page.request.get(`${base}/options?hostname=foreign.localhost`, { headers: { host: `${hostname}:3303` } })).status()).toBe(400);
-  expect((await page.request.get(`${base}/private`)).status()).toBe(404);
-  expect((await page.request.post(`${base}/appointments`, { headers: { origin: 'https://foreign.test' }, data: {} })).status()).toBe(403);
+  expect((await publicPage.request.get(`${base}/options?hostname=foreign.localhost`, { headers: { host: `${hostname}:3303` } })).status()).toBe(400);
+  expect((await publicPage.request.get(`${base}/private`)).status()).toBe(404);
+  expect((await publicPage.request.post(`${base}/appointments`, { headers: { origin: 'https://foreign.test' }, data: {} })).status()).toBe(403);
   // The public page binds the booking component to its projected unit; extra professionals restore explicit choice.
   await db.location.create({ data: { tenantId: tenant.id, slug: 'segunda', name: 'Segunda unidade', timezone: 'America/Sao_Paulo' } });
   const second = await db.professional.create({ data: { tenantId: tenant.id, locationId: location.id, name: 'Outra pessoa' } });
@@ -335,7 +338,7 @@ test('HTML/CSS publicado com preços, agenda real e confirmação repetida sem d
   const exclusive = await db.service.create({ data: { tenantId: tenant.id, locationId: location.id, name: 'Serviço exclusivo', durationMinutes: 30, priceCents: 7000 } });
   await db.service.create({ data: { tenantId: tenant.id, locationId: location.id, name: 'Sem profissional', durationMinutes: 30, priceCents: 7000 } });
   await db.professionalService.create({ data: { tenantId: tenant.id, locationId: location.id, professionalId: professional.id, serviceId: exclusive.id } });
-  await page.reload();
+  await publicPage.reload();
   await expect(site.getByLabel('Unidade', { exact: true })).toHaveCount(0);
   await site.getByRole('checkbox', { name: /Corte de assinatura/ }).check();
   await expect(site.getByLabel('Profissional', { exact: true })).toBeVisible();
@@ -344,7 +347,7 @@ test('HTML/CSS publicado com preços, agenda real e confirmação repetida sem d
   await site.getByRole('checkbox', { name: /Corte de assinatura/ }).uncheck();
   await site.getByRole('checkbox', { name: /Serviço exclusivo/ }).check();
   await expect(site.getByLabel('Profissional', { exact: true })).toHaveCount(0);
-  const availabilityResponse = page.waitForResponse(response => response.url().includes('/api/booking/availability?'));
+  const availabilityResponse = publicPage.waitForResponse(response => response.url().includes('/api/booking/availability?'));
   await site.getByLabel('Data', { exact: true }).fill(date);
   const response = await availabilityResponse;
   expect(new URL(response.url()).searchParams.get('professionalId')).toBe(professional.id);

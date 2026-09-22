@@ -2,6 +2,10 @@
 
 Execuções locais em Windows, Node.js 24.20.0 e pnpm 11.19.0. Incremento sobre a [Foundation](FOUNDATION_VALIDATION.md), com contratos em [CATALOG.md](CATALOG.md), [BOOKING_API.md](BOOKING_API.md), [WHATSAPP.md](WHATSAPP.md) e [ADMIN.md](ADMIN.md). O MVP completo ainda depende dos próximos itens do roadmap.
 
+## Navegação do site público após publicação — 22/09/2026
+
+O teste de admin passou a abrir o site público em uma nova aba do mesmo contexto após publicar. Assim, a atualização pendente do editor não disputa a navegação do site no WebKit. A suíte completa de admin passou com 18/18 cenários em Chromium desktop, Chromium móvel e WebKit iOS. Também passaram lint, typecheck dos 18 pacotes, 246 testes unitários e build dos 18 pacotes. Não houve alteração no comportamento do produto ou no schema.
+
 ## Agenda individual e organização do dashboard — 10/09/2026
 
 O site e a agenda interna dispensam escolhas redundantes de unidade/profissional, conservam seleção explícita em equipes e invalidam escolhas incompatíveis após troca de serviço. A configuração semanal individual pode atualizar expediente e escala numa operação; diferenças existentes exigem optar pela unificação. O dashboard separa rotina de atendimento e configuração da barbearia.
