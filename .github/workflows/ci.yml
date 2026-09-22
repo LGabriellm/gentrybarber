@@ -91,8 +91,8 @@ jobs:
         run: pnpm build
       - name: Run compiled API against PostgreSQL
         run: node scripts/smoke-build.mjs
-      - name: Install Chromium for browser checks
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Chromium and WebKit for browser checks
+        run: pnpm exec playwright install --with-deps chromium webkit
       - name: Browser tests
         run: pnpm test:e2e
       - name: Real catalog and booking browser journeys

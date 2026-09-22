@@ -28,7 +28,7 @@ Validação desta configuração em 15/09/2026: sintaxe YAML e aliases validados
 
 Instalar a partir do lockfile → preparar dependências → validar schema e gerar client → aplicar migration em banco descartável → lint → typecheck → unit/integration → build. Jobs devem falhar quando uma etapa exigida falha. Cache inclui lockfile e configuração relevante; secrets não entram nos artefatos.
 
-A [CI](../.github/workflows/ci.yml) usa Node.js 24, pnpm 11.19.0, PostgreSQL 17 em banco `platform_test` e Redis. Aplica migration antes da integração, usa Vitest 5 para testes e instala Chromium para as verificações Playwright. Credenciais fixas do workflow são exclusivamente para os serviços efêmeros da CI.
+A [CI](../.github/workflows/ci.yml) usa Node.js 24, pnpm 11.19.0, PostgreSQL 17 em banco `platform_test` e Redis. Aplica migration antes da integração, usa Vitest 5 para testes e instala Chromium e WebKit para as verificações Playwright. Credenciais fixas do workflow são exclusivamente para os serviços efêmeros da CI.
 
 A CI da Foundation é um gate de qualidade. Não configura deploy automático produtivo. Infraestrutura, domínio, secrets e ambiente de destino ainda precisam ser definidos. Arquivo de workflow criado não significa execução remota observada.
 
