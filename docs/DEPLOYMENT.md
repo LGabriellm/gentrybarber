@@ -77,7 +77,7 @@ Os hostnames exatos obtêm HTTPS automático pelo Caddy e exigem registros DNS v
 
 `BETTER_AUTH_URL` deve ser exatamente `https://api.<PLATFORM_DOMAIN>` e `TRUSTED_ORIGINS` deve conter somente dashboard e admin HTTPS. Não existe bypass produtivo para origens HTTP.
 
-No GitHub, configurar a variável `PLATFORM_DOMAIN` e os secrets `VPS_HOST`, `VPS_USER` e `VPS_SSH_KEY`. A chave pública correspondente precisa estar em `authorized_keys` do operador da VPS antes de remover o secret legado de senha. O workflow valida API, dashboard e admin por HTTPS e falha se a porta 4000 continuar acessível externamente.
+No GitHub, configurar a variável `PLATFORM_DOMAIN` e os secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_SSH_PASSPHRASE` e `VPS_SSH_FINGERPRINT`. A chave pública correspondente precisa estar em `authorized_keys` do operador da VPS antes de remover o secret legado de senha. O fingerprint SHA256 deve ser obtido de forma confiável na própria VPS e impede conexão com um host SSH diferente. O workflow valida API, dashboard e admin por HTTPS e falha se a porta 4000 continuar acessível externamente.
 
 Criar um tenant não publica automaticamente um site. A administração global exibe o estado de publicação e só oferece o endereço público depois do fluxo rascunho → aprovação → publicação. Um 404 antes da publicação é o isolamento esperado, não fallback para outro tenant.
 

@@ -30,6 +30,8 @@ describe('production network boundary', () => {
     expect(environment).toContain('BETTER_AUTH_URL=https://api.gentryhub.tech');
     expect(environment).toContain('TRUSTED_ORIGINS=https://dashboard.gentryhub.tech,https://admin.gentryhub.tech');
     expect(workflow).toContain('key: ${{ secrets.VPS_SSH_KEY }}');
+    expect(workflow).toContain('passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}');
+    expect(workflow).toContain('fingerprint: ${{ secrets.VPS_SSH_FINGERPRINT }}');
     expect(workflow).not.toContain('VPS_PASSWORD');
   });
 });
