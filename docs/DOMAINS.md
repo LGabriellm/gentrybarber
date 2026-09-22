@@ -8,6 +8,23 @@ Wildcard direciona os subdomínios à mesma infraestrutura. Um slug de tenant pr
 
 O resolver deve retirar porta apenas de formato válido, tratar caixa e validar rótulos. A aplicação recebe o hostname de um proxy com política explícita; qualquer header encaminhado pelo cliente precisa ser removido/substituído no ingresso.
 
+### Hostnames reservados da plataforma
+
+Produção separa as superfícies por hostname, todos apontando para o mesmo ingresso da VPS:
+
+| Registro DNS | Destino | Uso |
+| --- | --- | --- |
+| `@` e `www` | IP público da VPS | Estado/entrada da plataforma; não escolhe tenant |
+| `api` | IP público da VPS | API HTTPS; readiness e OpenAPI permanecem privados |
+| `dashboard` | IP público da VPS | Operação autenticada da barbearia |
+| `admin` | IP público da VPS | Back-office global |
+| `app` | IP público da VPS | Redirecionamento canônico para `dashboard` |
+| `*` | IP público da VPS | Sites publicados por slug de tenant |
+
+Usar registros `A` para IPv4 e criar `AAAA` apenas quando a VPS realmente atender o IPv6 informado. Um `AAAA` antigo ou apontando para outro servidor pode fazer dispositivos com IPv6 falharem enquanto clientes IPv4 funcionam. Os registros exatos prevalecem sobre o wildcard e devem existir antes de ativar o Caddyfile.
+
+API, dashboard, admin e app usam HTTPS por certificados exatos. Subdomínios da plataforma usam TLS on-demand: Caddy consulta a API em loopback e só emite certificado para tenant ativo cujo site e versão estejam publicados e cujo entitlement `website` esteja habilitado. O endpoint de autorização rejeita nomes reservados, desconhecidos e domínios customizados; estes continuam no fluxo da Fase 4. Não habilitar HSTS com `includeSubDomains` no apex.
+
 ## Custom domain — Fase 4
 
 Usar adapter de Cloudflare for SaaS / Custom Hostnames. O fluxo planejado é adicionar hostname → instruções DNS → comprovar controle → verificar DNS → provisionar SSL → ativar. Estados: `PENDING`, `WAITING_DNS`, `VERIFYING`, `ACTIVE`, `FAILED`, `SUSPENDED`.

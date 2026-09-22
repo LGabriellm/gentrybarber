@@ -23,6 +23,7 @@ import {
 } from "@nestjs/platform-fastify";
 import {
   ApiCookieAuth,
+  ApiExcludeEndpoint,
   ApiOperation,
   ApiTags,
   DocumentBuilder,
@@ -78,6 +79,14 @@ class FoundationController {
   async ready() {
     await this.services.db.$queryRaw`SELECT 1`;
     return { status: "ready" };
+  }
+
+  @Get('/internal/tls/authorize')
+  @ApiExcludeEndpoint()
+  authorizeTlsHostname(@Query() query: unknown) {
+    return this.services.authorizePlatformTlsHostname(
+      z.object({ domain: z.string().min(1).max(253) }).strict().parse(query).domain,
+    );
   }
 
   @Get("/v1/me")

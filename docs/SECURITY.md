@@ -43,3 +43,13 @@ Proxies do painel restringem caminhos, métodos e parâmetros e limitam corpos J
 Consultas, cache, jobs, storage, exports e busca precisam conservar tenant. RLS é uma defesa complementar possível, não uma proteção implicitamente ativa. Restaurar backups em ambiente isolado e revisar retenção/exclusão antes do uso comercial. Dados demonstrativos devem ser fictícios.
 
 Revisão de release deve cobrir dependências, secrets, observabilidade, comportamento em falhas e rollback. Não tratar testes verdes como certificação geral de segurança: registrar o cenário efetivamente coberto e os limites restantes.
+
+## Ingresso e portas de produção
+
+Somente 80/443 do Caddy são públicos. As portas 3000, 3001, 3002 e 4000 ficam vinculadas a `127.0.0.1`; publicar qualquer uma em `0.0.0.0` permite contornar TLS, headers, roteamento por hostname e controles futuros do ingresso. PostgreSQL e Redis não publicam portas no host.
+
+O Caddy remove e recria `X-Forwarded-For`, `X-Forwarded-Host` e `X-Forwarded-Proto`. A API confia somente no `/32` do gateway Docker observado no deploy; `0.0.0.0/0`, `::/0` e redes privadas amplas são recusadas. Acesso público a `/ready` exporia o estado de dependências e é bloqueado, assim como o schema OpenAPI no ambiente produtivo.
+
+TLS on-demand não aceita nomes arbitrários. O endpoint `/internal/tls/authorize` fica inacessível pelo hostname público da API e responde 2xx somente para subdomínio da plataforma resolvido para tenant ativo com site publicado, tema válido e feature `website`. Caddy cancela a emissão em qualquer outro status. A rota continua sujeita ao rate limit compartilhado e a porta da API permanece em loopback.
+
+O workflow de deploy autentica por chave SSH. O operador de deploy pertence ao grupo Docker, que equivale a privilégio elevado no host; limitar essa conta, proteger a chave e revisar seus acessos continuam obrigatórios. A configuração inicial não concede `NOPASSWD:ALL`, apenas os comandos de ativação do Caddy necessários ao script.

@@ -7,7 +7,7 @@ const base = {
   BETTER_AUTH_URL: 'http://localhost:4000', TRUSTED_ORIGINS: 'http://localhost:3000, http://localhost:3001',
   REDIS_URL: 'redis://localhost:6379', SMTP_HOST: 'localhost', SMTP_FROM: 'BarberHub <no-reply@barber.test>',
 };
-const production = { ...base, NODE_ENV: 'production', PLATFORM_DOMAIN: 'barber.test', BETTER_AUTH_URL: 'https://api.barber.test', TRUSTED_ORIGINS: 'https://app.barber.test,https://admin.barber.test' };
+const production = { ...base, NODE_ENV: 'production', PLATFORM_DOMAIN: 'barber.test', BETTER_AUTH_URL: 'https://api.barber.test', TRUSTED_ORIGINS: 'https://dashboard.barber.test,https://admin.barber.test' };
 
 describe('platform configuration boundary', () => {
   it('requires server secrets and database configuration', () => {
@@ -29,8 +29,11 @@ describe('platform configuration boundary', () => {
 
   it('allows production only with HTTPS authentication and trusted origins', () => {
     expect(loadConfig(production).NODE_ENV).toBe('production');
-    expect(() => loadConfig({ ...production, BETTER_AUTH_URL: 'http://api.barber.test' })).toThrow('Production authentication requires HTTPS origins');
-    expect(() => loadConfig({ ...production, TRUSTED_ORIGINS: 'https://app.barber.test,http://admin.barber.test' })).toThrow('Production authentication requires HTTPS origins');
+    expect(() => loadConfig({ ...production, BETTER_AUTH_URL: 'http://api.barber.test' })).toThrow('Production authentication URLs must use the platform service hostnames over HTTPS');
+    expect(() => loadConfig({ ...production, TRUSTED_ORIGINS: 'https://dashboard.barber.test,http://admin.barber.test' })).toThrow('Production authentication URLs must use the platform service hostnames over HTTPS');
+    expect(() => loadConfig({ ...production, TRUSTED_ORIGINS: 'https://dashboard.barber.test,https://admin.barber.test,https://evil.test' })).toThrow('Production authentication URLs must use the platform service hostnames over HTTPS');
+    expect(() => loadConfig({ ...production, BETTER_AUTH_URL: 'http://api.barber.test', BYPASS_HTTPS_CHECK: 'true' })).toThrow('Production authentication URLs must use the platform service hostnames over HTTPS');
+    expect(() => loadConfig({ ...production, PLATFORM_DOMAIN: '127.0.0.1', BETTER_AUTH_URL: 'http://127.0.0.1' })).toThrow('Production requires a valid platform domain');
   });
 
   it('blocks fixture mode and placeholder secrets in production', () => {

@@ -19,9 +19,7 @@ apt-get install -y -qq curl git ufw fail2ban unattended-upgrades
 # ── 2. Create deploy user ────────────────────────────────────────
 echo "[2/8] Creating deploy user..."
 if ! id "$DEPLOY_USER" &>/dev/null; then
-  useradd --create-home --shell /bin/bash --groups docker,sudo "$DEPLOY_USER"
-  echo "$DEPLOY_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$DEPLOY_USER
-  chmod 440 /etc/sudoers.d/$DEPLOY_USER
+  useradd --create-home --shell /bin/bash --groups docker "$DEPLOY_USER"
   echo "  → User '$DEPLOY_USER' created. Set up SSH keys manually:"
   echo "    mkdir -p /home/$DEPLOY_USER/.ssh"
   echo "    echo 'YOUR_PUBLIC_KEY' >> /home/$DEPLOY_USER/.ssh/authorized_keys"
@@ -30,6 +28,15 @@ if ! id "$DEPLOY_USER" &>/dev/null; then
 else
   echo "  → User '$DEPLOY_USER' already exists, skipping."
 fi
+deluser "$DEPLOY_USER" sudo >/dev/null 2>&1 || true
+
+# Limit sudo to the four commands used to validate and activate the Caddyfile.
+# Docker group membership is still privileged and must be restricted to deploy operators.
+cat > /etc/sudoers.d/$DEPLOY_USER <<EOF
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/caddy validate --config * --adapter caddyfile, /usr/bin/install -m 0644 * /etc/caddy/Caddyfile, /usr/bin/systemctl reload-or-restart caddy, /usr/bin/systemctl restart caddy
+EOF
+chmod 440 /etc/sudoers.d/$DEPLOY_USER
+visudo -cf /etc/sudoers.d/$DEPLOY_USER
 
 
 

@@ -59,7 +59,25 @@ A workflow `frontend-images.yml` constrói cada imagem e verifica HTTP, assets e
 
 ## Release de produção planejado
 
-O deploy da VPS aplica de forma idempotente o `infra/vps/Caddyfile` para o domínio configurado e valida o caminho público `http://<slug>.<PLATFORM_DOMAIN>` preservando o header `Host`. O apex informa apenas o estado da plataforma; ele não seleciona uma barbearia. Esta etapa é deliberadamente HTTP: HTTPS wildcard continua bloqueado até existir DNS-01 ou on-demand TLS protegido por uma política de autorização de domínio. Enquanto isso, painel, admin e API permanecem nos endereços/portas declarados no ambiente. Não remover `BYPASS_HTTPS_CHECK` nem trocar origens para HTTPS parcialmente; a migração deve coordenar proxy, certificados, `BETTER_AUTH_URL`, `TRUSTED_ORIGINS` e `TRUST_PROXY_CIDRS`.
+O ingresso da VPS segue [ADR 0009](adr/0009-production-ingress-and-service-hostnames.md). Caddy é o único processo exposto em 80/443. API, site público, dashboard e admin publicam portas apenas em `127.0.0.1`; acessos por IP nas portas 3000–4000 devem falhar externamente.
+
+Configuração pública padrão:
+
+| URL | Destino interno |
+| --- | --- |
+| `https://api.<PLATFORM_DOMAIN>` | API em `API_HOST_PORT` |
+| `https://dashboard.<PLATFORM_DOMAIN>` | Dashboard em `DASHBOARD_HOST_PORT` |
+| `https://admin.<PLATFORM_DOMAIN>` | Admin em `ADMIN_HOST_PORT` |
+| `https://app.<PLATFORM_DOMAIN>` | Redireciona para dashboard |
+| `https://<slug>.<PLATFORM_DOMAIN>` | Site público em `WEB_PUBLIC_HOST_PORT`, após autorização TLS |
+
+Os quatro host ports são configuráveis no `.env.production`, precisam ser únicos e nunca devem ser liberados no firewall. As portas internas dos containers permanecem 3000 para frontends e 4000 para API. O deploy descobre o gateway Docker depois da migration e grava somente seu `/32` em `TRUST_PROXY_CIDRS`; valores amplos conhecidos são recusados.
+
+Os hostnames exatos obtêm HTTPS automático pelo Caddy e exigem registros DNS válidos antes do deploy. Para tenants, a primeira conexão TLS aciona uma consulta a `/internal/tls/authorize?domain=...`; a API autoriza somente subdomínios da plataforma realmente publicados e Caddy emite um certificado individual. HTTP redireciona para HTTPS. DNS-01 wildcard continua uma otimização futura, não um requisito para o MVP. Não habilitar HSTS com `includeSubDomains`; custom domains permanecem no fluxo verificado da Fase 4.
+
+`BETTER_AUTH_URL` deve ser exatamente `https://api.<PLATFORM_DOMAIN>` e `TRUSTED_ORIGINS` deve conter somente dashboard e admin HTTPS. Não existe bypass produtivo para origens HTTP.
+
+No GitHub, configurar a variável `PLATFORM_DOMAIN` e os secrets `VPS_HOST`, `VPS_USER` e `VPS_SSH_KEY`. A chave pública correspondente precisa estar em `authorized_keys` do operador da VPS antes de remover o secret legado de senha. O workflow valida API, dashboard e admin por HTTPS e falha se a porta 4000 continuar acessível externamente.
 
 Criar um tenant não publica automaticamente um site. A administração global exibe o estado de publicação e só oferece o endereço público depois do fluxo rascunho → aprovação → publicação. Um 404 antes da publicação é o isolamento esperado, não fallback para outro tenant.
 

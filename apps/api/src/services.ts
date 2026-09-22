@@ -204,5 +204,22 @@ export class FoundationServices {
     const primaryDomain = features.includes('custom_domain') ? await this.db.domain.findFirst({ where: { tenantId: tenant.id, status: 'ACTIVE', isPrimary: true }, select: { hostname: true } }) : null;
     return { data, themeId: definition.id, themeContext: context, version: site.publishedThemeVersion.version, title: site.title, canonicalHost: primaryDomain?.hostname ?? `${tenant.slug}.${this.config.PLATFORM_DOMAIN}` };
   }
+
+  async authorizePlatformTlsHostname(hostname: string) {
+    const host = normalizeHostname(hostname);
+    const platformDomain = normalizeHostname(this.config.PLATFORM_DOMAIN);
+    if (hostname !== host || !host.endsWith(`.${platformDomain}`)) throw new AccessError('NOT_FOUND');
+    const tenant = await resolvePublicTenant(host, platformDomain, this.directory);
+    await this.features.require(tenant.id, 'website');
+    const site = await this.db.siteConfiguration.findFirst({
+      where: { tenantId: tenant.id, published: true },
+      select: {
+        theme: { select: { active: true, ownerTenantId: true } },
+        publishedThemeVersion: { select: { status: true } },
+      },
+    });
+    if (!site || !site.theme.active || !site.publishedThemeVersion || site.publishedThemeVersion.status !== 'PUBLISHED' || (site.theme.ownerTenantId && site.theme.ownerTenantId !== tenant.id)) throw new AccessError('NOT_FOUND');
+    return { allowed: true };
+  }
 }
 

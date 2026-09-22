@@ -1,20 +1,132 @@
-# Rendered by infra/vps/deploy.sh. The placeholder is replaced with PLATFORM_DOMAIN.
-# This first production ingress is intentionally HTTP-only. Wildcard HTTPS requires
-# DNS-01 or guarded on-demand TLS and must be introduced with the domain adapter.
+# Rendered by infra/vps/deploy.sh. Only Caddy is public on ports 80/443;
+# application ports are bound to the VPS loopback interface.
 
-http://*.{{PLATFORM_DOMAIN}} {
-	reverse_proxy 127.0.0.1:3000
+{
+	on_demand_tls {
+		ask http://127.0.0.1:{{API_HOST_PORT}}/internal/tls/authorize
+	}
+}
+
+(service_security) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+(public_security) {
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options SAMEORIGIN
 		Referrer-Policy strict-origin-when-cross-origin
 		-Server
 	}
-	encode gzip zstd
 }
 
-http://{{PLATFORM_DOMAIN}}, http://www.{{PLATFORM_DOMAIN}} {
+# Caddy obtains ordinary certificates automatically for these exact service
+# hostnames. DNS A/AAAA records must point to this VPS before deployment.
+api.{{PLATFORM_DOMAIN}} {
+	import service_security
+	encode gzip zstd
+
+	# Readiness and the generated schema are operational endpoints, not public API.
+	@private path /ready /openapi.json /internal/*
+	respond @private 404
+
+	reverse_proxy 127.0.0.1:{{API_HOST_PORT}} {
+		header_up -X-Forwarded-For
+		header_up -X-Forwarded-Host
+		header_up -X-Forwarded-Proto
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+dashboard.{{PLATFORM_DOMAIN}} {
+	import service_security
+	encode gzip zstd
+
+	# Keep the same explicit auth allowlist used by the Next.js proxy while routing
+	# directly to the API so rate limits see the real client address.
+	@dashboard_auth path /api/auth/sign-in/email /api/auth/sign-up/email /api/auth/sign-out /api/auth/get-session /api/auth/verify-email /api/auth/send-verification-email /api/auth/request-password-reset /api/auth/reset-password
+	handle @dashboard_auth {
+		reverse_proxy 127.0.0.1:{{API_HOST_PORT}} {
+			header_up -X-Forwarded-For
+			header_up -X-Forwarded-Host
+			header_up -X-Forwarded-Proto
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+	handle /api/auth/* {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:{{DASHBOARD_HOST_PORT}}
+	}
+}
+
+admin.{{PLATFORM_DOMAIN}} {
+	import service_security
+	encode gzip zstd
+
+	@admin_auth path /api/auth/sign-in/email /api/auth/sign-up/email /api/auth/sign-out /api/auth/get-session /api/auth/verify-email /api/auth/send-verification-email /api/auth/request-password-reset /api/auth/reset-password
+	handle @admin_auth {
+		reverse_proxy 127.0.0.1:{{API_HOST_PORT}} {
+			header_up -X-Forwarded-For
+			header_up -X-Forwarded-Host
+			header_up -X-Forwarded-Proto
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+	handle /api/auth/* {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:{{ADMIN_HOST_PORT}}
+	}
+}
+
+app.{{PLATFORM_DOMAIN}} {
+	import service_security
+	redir https://dashboard.{{PLATFORM_DOMAIN}}{uri} permanent
+}
+
+{{PLATFORM_DOMAIN}}, www.{{PLATFORM_DOMAIN}} {
+	import service_security
 	respond "Barber Platform is running. Use the address of a published barbershop." 200
+}
+
+# Tenant HTTP is only a redirect. Certificate issuance on HTTPS is guarded by
+# the internal ask endpoint, which accepts active tenants with published sites.
+http://*.{{PLATFORM_DOMAIN}} {
+	redir https://{host}{uri} permanent
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	@tenant host *.{{PLATFORM_DOMAIN}}
+	handle @tenant {
+		import public_security
+		header Strict-Transport-Security "max-age=31536000"
+		encode gzip zstd
+		reverse_proxy 127.0.0.1:{{WEB_PUBLIC_HOST_PORT}}
+	}
+	handle {
+		abort
+	}
 }
 
 :80 {

@@ -299,6 +299,15 @@ describe('Foundation API with PostgreSQL and Better Auth', () => {
     }
   });
 
+  it('authorizes TLS only for active platform tenants with a published site', async () => {
+    expect((await get(`/internal/tls/authorize?domain=${slugs.a}.platform.test`)).statusCode).toBe(200);
+    for (const hostname of [`${prefix}-unknown.platform.test`, 'admin.platform.test', 'customer.example.test']) {
+      const response = await get(`/internal/tls/authorize?domain=${hostname}`);
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ error: 'NOT_FOUND' });
+    }
+  });
+
   it('resets a password through the captured link and revokes old sessions', async () => {
     const user = await registerVerifiedUser('reset');
     const request = await post('/request-password-reset', { email: user.email, redirectTo: `${origin}/reset-password` });

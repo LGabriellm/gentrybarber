@@ -24,9 +24,12 @@ const envSchema = z.object({
 export function loadConfig(source: Record<string, string | undefined> = process.env) {
   const config = envSchema.parse(source);
   if (config.NODE_ENV === 'production') {
-    // Relaxed HTTPS requirement to allow testing with IP addresses or explicit bypass
-    if (config.PLATFORM_DOMAIN !== 'localhost' && !/^[0-9.]+$/.test(config.PLATFORM_DOMAIN) && source.BYPASS_HTTPS_CHECK !== 'true') {
-      if (!config.BETTER_AUTH_URL.startsWith('https://') || config.TRUSTED_ORIGINS.some(origin => !origin.startsWith('https://'))) throw new Error('Production authentication requires HTTPS origins for domains');
+    const domain = config.PLATFORM_DOMAIN.toLowerCase();
+    if (domain === 'localhost' || !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) throw new Error('Production requires a valid platform domain');
+    const expectedAuthUrl = `https://api.${domain}`;
+    const expectedOrigins = [`https://dashboard.${domain}`, `https://admin.${domain}`];
+    if (config.BETTER_AUTH_URL !== expectedAuthUrl || config.TRUSTED_ORIGINS.length !== expectedOrigins.length || expectedOrigins.some(origin => !config.TRUSTED_ORIGINS.includes(origin))) {
+      throw new Error('Production authentication URLs must use the platform service hostnames over HTTPS');
     }
     if (/localhost|example|change[-_]?me/i.test(config.BETTER_AUTH_SECRET)) throw new Error('Replace the placeholder authentication secret');
     if (source.DEMO_MODE === 'true') throw new Error('Demo fixtures cannot run in production');
