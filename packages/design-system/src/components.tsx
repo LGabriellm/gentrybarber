@@ -1,5 +1,5 @@
 import React from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEventHandler, ReactNode } from "react";
 
 export function SectionHeading({ label, title, description, inverse = false }: { label: string; title: string; description?: string; inverse?: boolean }) {
   return (
@@ -141,15 +141,16 @@ export function MapEmbed({ url, title }: { url: string; title?: string }) {
   );
 }
 
-export function CTABanner({ title, subtitle, buttonLabel, buttonHref, variant = 'solid' }: {
+export function CTABanner({ title, subtitle, buttonLabel, buttonHref, onButtonClick, variant = 'solid' }: {
   title: string; subtitle?: string; buttonLabel: string; buttonHref: string;
+  onButtonClick?: MouseEventHandler<HTMLAnchorElement>;
   variant?: 'solid' | 'outlined' | 'gradient';
 }) {
   return (
     <div className={`ds-cta-banner ds-cta-banner--${variant}`}>
       <h2 className="ds-cta-banner__title">{title}</h2>
       {subtitle && <p className="ds-cta-banner__subtitle">{subtitle}</p>}
-      <a href={buttonHref} className="ds-cta-banner__button">{buttonLabel}</a>
+      <a href={buttonHref} onClick={onButtonClick} className="ds-cta-banner__button">{buttonLabel}</a>
     </div>
   );
 }

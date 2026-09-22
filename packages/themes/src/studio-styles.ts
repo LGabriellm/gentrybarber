@@ -1,6 +1,6 @@
 /** Scoped to the visual renderer, independent of admin and dashboard. */
 export const studioStyles = `
-.brand-studio{--brand-width:1180px;--brand-heading:clamp(2.8rem,6.5vw,6.4rem);--brand-line:color-mix(in srgb,var(--theme-text) 18%,transparent)}
+.brand-studio{--brand-width:1180px;--brand-heading:clamp(2.8rem,6.5vw,6.4rem);--brand-line:color-mix(in srgb,var(--theme-text) 18%,transparent);-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .brand-studio[data-width=narrow]{--brand-width:980px}.brand-studio[data-width=wide]{--brand-width:1440px}
 .brand-studio[data-scale=restrained]{--brand-heading:clamp(2.4rem,5vw,4.5rem)}.brand-studio[data-scale=dramatic]{--brand-heading:clamp(3.3rem,8vw,8rem)}
 .brand-studio .brand-container{width:min(var(--brand-width),calc(100% - 64px));margin-inline:auto}

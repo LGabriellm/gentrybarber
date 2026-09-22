@@ -1,10 +1,10 @@
 # Booking Engine — Fase 1
 
-A agenda interna está implementada na Fase 1. O [contrato operacional](BOOKING_API.md) descreve endpoints, permissões, transições e limites efetivos; a [validação](MVP_VALIDATION.md) registra as evidências. O pacote `@platform/booking` contém cálculo puro de calendário/disponibilidade e transições; os casos de uso transacionais ficam na API. Reserva pública e notificações automáticas continuam futuras.
+A agenda interna e a reserva pública estão implementadas na Fase 1. O [contrato operacional](BOOKING_API.md) descreve endpoints, permissões, transições e limites efetivos; a [validação](MVP_VALIDATION.md) registra as evidências. O pacote `@platform/booking` contém cálculo puro de calendário/disponibilidade e transições; os casos de uso transacionais ficam na API. Notificações automáticas continuam futuras.
 
 ## Caso de uso
 
-Unidade → serviço → profissional → data → horário → cliente → confirmação. O backend calcula disponibilidade combinando duração dos serviços, funcionamento da unidade, agenda profissional, intervalos, time off, férias e agendamentos existentes. A UI e temas exibem possibilidades retornadas pelo Core.
+Unidade → um ou mais serviços → profissional → data → horário → cliente → confirmação. Na reserva pública, o cliente pode combinar de 1 a 10 serviços da mesma unidade; somente profissionais habilitados para todos eles permanecem disponíveis. O backend soma preços e durações, calcula a disponibilidade combinando funcionamento da unidade, agenda profissional, intervalos, time off, férias e agendamentos existentes e devolve o total autoritativo. A UI mostra a estimativa durante a seleção e confirma os valores retornados pelo Core.
 
 Guardar instantes UTC e timezone IANA por unidade. Regras recorrentes de expediente pertencem ao horário local. Converter limites considerando mudanças de horário e intervalos ambíguos; não usar offset fixo como timezone. O intervalo ocupado usa início inclusivo e fim exclusivo, permitindo um atendimento começar quando outro termina.
 

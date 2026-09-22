@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useRef } from 'react';
 import type { PublicSiteData } from "@platform/theme-engine";
+import { SectionLink } from './section-link';
 
 export function MobileNav({ data, sections }: { data: PublicSiteData; sections?: readonly { id: string; title: string }[] }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -17,10 +18,10 @@ export function MobileNav({ data, sections }: { data: PublicSiteData; sections?:
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
         </button>
         <nav className="mobile-menu-links">
-          {!!data.services?.length && <a href="#servicos" onClick={close}>Serviços</a>}
-          {!!data.professionals?.length && <a href="#equipe" onClick={close}>Equipe</a>}
-          {sections?.map(s => <a key={s.id} href={`#section-${s.id}`} onClick={close}>{s.title}</a>)}
-          <a href="#contato" onClick={close}>Contato</a>
+          {!!data.services?.length && <SectionLink href="#servicos" onClick={close}>Serviços</SectionLink>}
+          {!!data.professionals?.length && <SectionLink href="#equipe" onClick={close}>Equipe</SectionLink>}
+          {sections?.map(s => <SectionLink key={s.id} href={`#section-${s.id}`} onClick={close}>{s.title}</SectionLink>)}
+          <SectionLink href="#contato" onClick={close}>Contato</SectionLink>
         </nav>
         <p className="mobile-menu-brand">{data.tenant.name}</p>
       </div>

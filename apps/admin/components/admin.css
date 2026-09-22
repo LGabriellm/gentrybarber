@@ -26,12 +26,15 @@
 .admin-check-grid { border: 1px solid var(--admin-line); border-radius: 10px; padding: 18px; margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .admin-check-grid legend { padding: 0 8px; font-size: 12px; color: var(--admin-muted); }
 .admin-hours-grid { display: grid; gap: 10px; }
+.admin-schedule-scope { display: grid; grid-template-columns: minmax(240px, .8fr) minmax(280px, 1.2fr); gap: 18px; align-items: end; margin-bottom: 20px; padding: 18px; border: 1px solid var(--admin-line); border-radius: 10px; background: #fafbf7; }
+.admin-schedule-scope p { margin: 0; color: var(--admin-muted); font-size: 12px; line-height: 1.6; }
 .admin-hours-row { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(2, minmax(110px, .7fr)) auto; gap: 14px; align-items: end; border-bottom: 1px solid var(--admin-line); padding: 12px 0; }
 .admin-hours-row:last-child { border-bottom: 0; }
 .admin-panel-heading > label { display: grid; gap: 6px; font-size: 11px; color: var(--admin-muted); }
 .admin-panel-heading > label select { min-width: 180px; }
 .admin-inline-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; max-width: 520px; }
 .admin-inline-confirm p { width: 100%; margin: 0; color: #7b3d2d; }
+.admin-conflict-recovery { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 0 24px 20px; padding: 14px; border: 1px solid #e7c7b8; border-radius: 8px; background: #fff6f0; color: #7b3d2d; font-size: 12px; }
 .admin-app .button.danger { background: #8a3728; color: #fff; border-color: #8a3728; }
 @media (max-width: 1000px) { .admin-operation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .admin-check-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 700px) { .admin-operation-grid { grid-template-columns: 1fr; padding: 16px; } .admin-check-grid { grid-template-columns: 1fr; } .admin-hours-row { grid-template-columns: 1fr 1fr; } .admin-hours-row > .button { grid-column: 1 / -1; } }
+@media (max-width: 700px) { .admin-operation-grid { grid-template-columns: 1fr; padding: 16px; } .admin-check-grid { grid-template-columns: 1fr; } .admin-schedule-scope { grid-template-columns: 1fr; padding: 14px; } .admin-hours-row { grid-template-columns: 1fr 1fr; } .admin-hours-row > .button { grid-column: 1 / -1; } .admin-conflict-recovery { align-items: stretch; flex-direction: column; margin: 0 16px 16px; } }

@@ -49,6 +49,8 @@
 - O shell administrativo vira navegação horizontal no celular. Tabelas viram cartões sem perder status ou ações.
 - Links de seção preservam uma página única para a barbearia; cada seção possui `scroll-margin` e título próprio.
 - Foco visível é obrigatório e não pode ficar coberto por navegação fixa.
+- Controles de data mantêm altura e tipografia estáveis no iOS, respeitam as áreas seguras e não provocam zoom automático.
+- A reserva pública aceita múltiplos serviços, mantém a seleção na mesma página e apresenta quantidade, duração e preço estimados antes da confirmação.
 
 ## Resiliência e validação
 
@@ -63,4 +65,3 @@
 - Gates: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:integration` e `pnpm build`.
 - Fluxos administrativos críticos: `apps/api/test/admin.integration.test.ts` e `tests/e2e-admin/admin.spec.ts`.
 - Matriz manual: desktop e celular, teclado, carregamento, vazio, erro, conflito, sessão expirada e sucesso em `pt-BR`.
-

@@ -10,7 +10,7 @@ export default async function BarbershopPage({ params }: { params: Promise<{ id:
     apiGet<BarbershopDetail>(`/v1/admin/tenants/${encodeURIComponent(id)}`), apiGet<AdminPlan[]>('/v1/admin/plans'),
     apiGet<ServiceCatalog>(`/v1/admin/tenants/${encodeURIComponent(id)}/services`), apiGet<ProfessionalCatalog>(`/v1/admin/tenants/${encodeURIComponent(id)}/professionals`),
   ]);
-  const firstLocation = tenant.locations[0];
+  const firstLocation = tenant.locations.find(location => location.active) ?? tenant.locations[0];
   const schedule = firstLocation ? await apiGet<Schedule>(`/v1/admin/tenants/${encodeURIComponent(id)}/schedule?locationId=${encodeURIComponent(firstLocation.id)}`) : null;
   const published = tenant.siteConfiguration?.published === true && !!tenant.siteConfiguration.publishedThemeVersionId;
   const platformDomain = process.env.PLATFORM_DOMAIN || 'localhost';

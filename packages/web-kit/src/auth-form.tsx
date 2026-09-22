@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -9,7 +9,9 @@ const formSchema = z.object({ email: z.email('Informe um e-mail válido.'), pass
 type FormData = z.infer<typeof formSchema>;
 export function AuthForm({ mode = 'login', token }: { mode?: 'login' | 'register' | 'forgot' | 'reset'; token?: string }) {
   const [message, setMessage] = useState('');
+  const [ready, setReady] = useState(false);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(formSchema), defaultValues: { email: mode === 'reset' ? 'reset@local.invalid' : '', password: '', name: '' } });
+  useEffect(() => setReady(true), []);
   async function submit(data: FormData) {
     setMessage('');
     if (mode !== 'forgot' && data.password.length < 12) return setMessage('Use uma senha com pelo menos 12 caracteres.');
@@ -26,11 +28,11 @@ export function AuthForm({ mode = 'login', token }: { mode?: 'login' | 'register
       setMessage(mode === 'register' ? 'Confira seu e-mail para confirmar a conta. O acesso à barbearia depende de uma vinculação pela equipe.' : mode === 'forgot' ? 'Se existir uma conta com esse e-mail, enviaremos as instruções de recuperação.' : 'Senha atualizada. Entre com a nova senha; se o e-mail ainda não estiver verificado, enviaremos um link para confirmar a conta.');
     } catch { setMessage('A plataforma está indisponível neste momento. Tente novamente.'); }
   }
-  return <form onSubmit={handleSubmit(submit)} className="auth-form">
-    {mode === 'register' && <label>Seu nome<input autoComplete="name" {...register('name')} required /></label>}
-    {mode !== 'reset' && <label>E-mail<input type="email" autoComplete="email" {...register('email')} required />{errors.email && <small>{errors.email.message}</small>}</label>}
-    {mode !== 'forgot' && <label>{mode === 'reset' ? 'Nova senha' : 'Senha'}<input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} {...register('password')} minLength={12} maxLength={128} required /><small>Pelo menos 12 caracteres.</small></label>}
-    <button className="button" type="submit" disabled={isSubmitting || (mode === 'reset' && !token)}>{isSubmitting ? 'Aguarde…' : { login: 'Entrar na plataforma', register: 'Criar minha conta', forgot: 'Enviar instruções', reset: 'Atualizar senha' }[mode]}</button>
+  return <form onSubmit={handleSubmit(submit)} className="auth-form" noValidate>
+    {mode === 'register' && <label>Seu nome<input autoComplete="name" {...register('name')} required disabled={!ready} /></label>}
+    {mode !== 'reset' && <label>E-mail<input type="email" autoComplete="email" {...register('email')} required disabled={!ready} />{errors.email && <small>{errors.email.message}</small>}</label>}
+    {mode !== 'forgot' && <label>{mode === 'reset' ? 'Nova senha' : 'Senha'}<input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} {...register('password')} minLength={12} maxLength={128} required disabled={!ready} /><small>Pelo menos 12 caracteres.</small></label>}
+    <button className="button" type="submit" disabled={!ready || isSubmitting || (mode === 'reset' && !token)}>{isSubmitting ? 'Aguarde…' : { login: 'Entrar na plataforma', register: 'Criar minha conta', forgot: 'Enviar instruções', reset: 'Atualizar senha' }[mode]}</button>
     {message && <p role="status" className="form-message">{message}</p>}
     <div className="form-links"><a href="/login">Entrar</a><a href="/register">Criar conta</a><a href="/forgot-password">Esqueci a senha</a></div>
   </form>;

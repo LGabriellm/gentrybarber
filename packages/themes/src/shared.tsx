@@ -5,8 +5,9 @@ import { Container } from "@platform/ui";
 import { MapEmbed } from "@platform/design-system";
 
 const css = `
-.theme-site{background:var(--theme-background);color:var(--theme-text);font-family:var(--theme-body-font);line-height:1.5;overflow:hidden}
+.theme-site{background:var(--theme-background);color:var(--theme-text);font-family:var(--theme-body-font);line-height:1.5;overflow:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .theme-site *{box-sizing:border-box}.theme-site a{color:inherit;text-decoration:none}.theme-site a:focus-visible{outline:3px solid var(--theme-accent);outline-offset:6px}
+.theme-site :is(button,input,select,textarea){font-family:inherit}.theme-site section[id],.theme-site [id=contato],.theme-site [id=inicio]{scroll-margin-top:24px}
 .theme-site .site-nav{min-height:94px;display:flex;align-items:center;justify-content:space-between;gap:28px;border-bottom:1px solid color-mix(in srgb,currentColor 18%,transparent)}
 .theme-site .site-brand{font-family:var(--theme-heading-font);font-size:22px;line-height:1.1;max-width:300px}.theme-site .site-links{display:flex;gap:30px;font-size:12px;letter-spacing:.025em;align-items:center}
 .theme-site .site-links a:hover{color:var(--theme-accent)}.theme-site .site-contact-link{border-bottom:1px solid currentColor;padding-bottom:3px}
@@ -41,7 +42,7 @@ const css = `
 .footer-rich-bottom{display:flex;justify-content:space-between;gap:24px;padding:28px 0;margin-top:40px;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent);font-size:12px;opacity:.6;text-transform:uppercase;letter-spacing:.08em}
 
 /* WhatsApp Float */
-.whatsapp-float{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:#25D366;color:#fff;display:grid;place-items:center;z-index:40;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:transform .3s ease}
+.whatsapp-float{position:fixed;bottom:max(24px,env(safe-area-inset-bottom));right:max(24px,env(safe-area-inset-right));width:56px;height:56px;border-radius:50%;background:#25D366;color:#fff;display:grid;place-items:center;z-index:40;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:transform .3s ease}
 .whatsapp-float:hover{transform:scale(1.1)}
 
 /* ScrollReveal */

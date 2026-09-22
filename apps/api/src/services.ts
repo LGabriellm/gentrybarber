@@ -218,12 +218,14 @@ export class FoundationServices {
     const features = (await Promise.all(featureKeys.map(async key => await this.features.hasFeature(tenant.id, key) ? key : null))).filter((key): key is FeatureKey => key !== null);
     const context = { tenantId: tenant.id, themeId: site.theme.key, allowedThemeIds: [site.theme.key], features };
     const definition = resolvePublicTheme(context);
-    const [identity, location, services, professionals] = await Promise.all([
+    const [identity, location] = await Promise.all([
       this.db.tenant.findUniqueOrThrow({ where: { id: tenant.id }, select: { phone: true, email: true, whatsapp: true } }),
       this.db.location.findFirst({ where: { tenantId: tenant.id, active: true }, orderBy: { id: 'asc' }, select: { id: true, address: true, timezone: true } }),
-      this.db.service.findMany({ where: { tenantId: tenant.id, active: true, location: { active: true } }, orderBy: { name: 'asc' }, take: 100, select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true } }),
-      this.db.professional.findMany({ where: { tenantId: tenant.id, active: true, location: { active: true } }, orderBy: { name: 'asc' }, take: 100, select: { id: true, name: true, bio: true, services: { where: { tenantId: tenant.id }, select: { serviceId: true } } } }),
     ]);
+    const [services, professionals] = location ? await Promise.all([
+      this.db.service.findMany({ where: { tenantId: tenant.id, locationId: location.id, active: true }, orderBy: { name: 'asc' }, take: 100, select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true } }),
+      this.db.professional.findMany({ where: { tenantId: tenant.id, locationId: location.id, active: true }, orderBy: { name: 'asc' }, take: 100, select: { id: true, name: true, bio: true, services: { where: { tenantId: tenant.id, service: { locationId: location.id, active: true } }, select: { serviceId: true } } } }),
+    ]) : [[], []];
     const address = addressSchema.parse(location?.address ?? {});
     const version = publishedConfigSchema.parse(site.publishedThemeVersion.config);
     const data: PublicSiteData = {

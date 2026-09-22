@@ -4,6 +4,7 @@ import { ProfessionalCard, resolveDesignTokens, type DesignTokens } from '@platf
 import { SiteFooterRich, WhatsAppFloat, ThemeShell } from './shared';
 import { PriceList } from './site-blocks';
 import { BookingWidget } from '@platform/web-kit';
+import { SectionLink } from './section-link';
 import { BrandImage } from './brand-image';
 import { studioStyles } from './studio-styles';
 import { TestimonialsBlock, FAQBlock, HoursBlock, StatsBlockSection, CTABlock } from './site-blocks-extended';
@@ -21,13 +22,13 @@ export function BrandSite({ data, defaults, variant }: { data: PublicSiteData; d
     <style>{studioStyles}</style>
     <div className="brand-studio" data-width={appearance.width ?? 'standard'} data-navigation={appearance.navigation ?? 'inline'} data-scale={appearance.headingScale ?? 'expressive'} data-case={appearance.headingCase ?? 'natural'} data-shape={appearance.imageShape ?? 'rectangle'} data-separators={appearance.separators ?? 'none'} data-buttons={tokens.buttonStyle} data-cards={tokens.cardStyle}>
       <header id="inicio" className="brand-nav brand-container">
-        <a className="brand-identity" href="#inicio">{content.logo ? <BrandImage image={content.logo} eager logo /> : <span className="brand-name">{data.tenant.name}</span>}{content.tagline && <span className="brand-tagline">{content.tagline}</span>}</a>
-        <nav aria-label="Navegação do site">{sections.map(section => <a key={section.id} href={`#section-${section.id}`}>{section.title}</a>)}</nav>
-        {destination && <a className="brand-button brand-nav-cta" href={`#section-${destination.id}`}>{content.ctaLabel ?? 'Conheça a barbearia'} <span aria-hidden="true">↗</span></a>}
+        <SectionLink className="brand-identity" href="#inicio">{content.logo ? <BrandImage image={content.logo} eager logo /> : <span className="brand-name">{data.tenant.name}</span>}{content.tagline && <span className="brand-tagline">{content.tagline}</span>}</SectionLink>
+        <nav aria-label="Navegação do site">{sections.map(section => <SectionLink key={section.id} href={`#section-${section.id}`}>{section.title}</SectionLink>)}</nav>
+        {destination && <SectionLink className="brand-button brand-nav-cta" href={`#section-${destination.id}`}>{content.ctaLabel ?? 'Conheça a barbearia'} <span aria-hidden="true">↗</span></SectionLink>}
       </header>
       <main>
         <section className="brand-hero brand-container" data-layout={layout}>
-          <div className="brand-hero-copy"><p className="brand-eyebrow">{content.heroEyebrow || data.tenant.name}</p><h1>{content.heroTitle}</h1>{content.heroSubtitle && <p className="brand-intro">{content.heroSubtitle}</p>}{destination && <a className="brand-button" href={`#section-${destination.id}`}>{content.ctaLabel ?? 'Conheça a barbearia'} <span aria-hidden="true">↗</span></a>}</div>
+          <div className="brand-hero-copy"><p className="brand-eyebrow">{content.heroEyebrow || data.tenant.name}</p><h1>{content.heroTitle}</h1>{content.heroSubtitle && <p className="brand-intro">{content.heroSubtitle}</p>}{destination && <SectionLink className="brand-button" href={`#section-${destination.id}`}>{content.ctaLabel ?? 'Conheça a barbearia'} <span aria-hidden="true">↗</span></SectionLink>}</div>
           {(content.heroImage || layout === 'split' || layout === 'editorial' || layout === 'poster') && <div className="brand-hero-art">{content.heroImage ? <BrandImage image={content.heroImage} eager /> : <div className="brand-monogram" aria-hidden="true"><span>{initials}</span><small>{content.tagline || data.tenant.name}</small></div>}</div>}
         </section>
         {sections.map(section => <section className="brand-section" key={section.id} id={`section-${section.id}`} data-tone={section.tone ?? 'default'} data-spacing={section.spacing ?? 'inherit'} data-align={section.align ?? 'left'}>

@@ -8,6 +8,7 @@ import { BookingWidget } from '@platform/web-kit';
 import { CodeSite } from './code-site';
 import { BrandSite } from './brand-site';
 import { TestimonialsBlock, FAQBlock, HoursBlock, StatsBlockSection, CTABlock } from './site-blocks-extended';
+import { SectionLink } from './section-link';
 
 /** Only structured, validated content is rendered; operational data always comes from the Core. */
 export function EditableSite({ data, defaults, variant }: { data: PublicSiteData; defaults: DesignTokens; variant: 'classic' | 'urban' | 'imperial' }) {
@@ -26,14 +27,14 @@ export function EditableSite({ data, defaults, variant }: { data: PublicSiteData
       <div id="inicio" />
       <Container>
         <header className="site-nav">
-          <a className="site-brand" href="#inicio">
+          <SectionLink className="site-brand" href="#inicio">
             {data.tenant.name}
-          </a>
+          </SectionLink>
           <nav className="site-links site-links--wrap" aria-label="Navegação do site">
             {sections.map(section => (
-              <a key={section.id} href={`#section-${section.id}`}>
+              <SectionLink key={section.id} href={`#section-${section.id}`}>
                 {section.title}
-              </a>
+              </SectionLink>
             ))}
           </nav>
         </header>
@@ -48,9 +49,9 @@ export function EditableSite({ data, defaults, variant }: { data: PublicSiteData
                 <h1 className="hero-heading">{content.heroTitle}</h1>
                 <p className="hero-copy">{content.heroSubtitle}</p>
                 {sections[0] && (
-                  <a className="hero-link" href={`#section-${(sections.find(item => item.type === 'booking') ?? sections[0]).id}`}>
+                  <SectionLink className="hero-link" href={`#section-${(sections.find(item => item.type === 'booking') ?? sections[0]).id}`}>
                     {content.ctaLabel ?? 'Conheça a barbearia'} <span aria-hidden="true">↗</span>
-                  </a>
+                  </SectionLink>
                 )}
               </div>
               {content.heroLayout !== 'centered' && (
