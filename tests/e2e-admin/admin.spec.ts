@@ -242,7 +242,7 @@ test('cadastro de barbearia com proprietário verificado e unidade persistidos',
 test('HTML/CSS publicado com preços, agenda real e confirmação repetida sem duplicação', async ({ page }, testInfo) => {
   test.setTimeout(120000);
   page.setDefaultTimeout(15000);
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.stack ?? error.message));
   const tenant = await db.tenant.findUniqueOrThrow({ where: { slug: `${prefix}-0` } });
   const hostname = `${prefix}.localhost`;
   await db.domain.create({ data: { tenantId: tenant.id, hostname, status: 'ACTIVE', isPrimary: true } });
@@ -344,9 +344,12 @@ test('HTML/CSS publicado com preços, agenda real e confirmação repetida sem d
   await site.getByRole('checkbox', { name: /Corte de assinatura/ }).uncheck();
   await site.getByRole('checkbox', { name: /Serviço exclusivo/ }).check();
   await expect(site.getByLabel('Profissional', { exact: true })).toHaveCount(0);
-  const requested = page.waitForRequest(request => request.url().includes('/api/booking/availability?'));
+  const availabilityResponse = page.waitForResponse(response => response.url().includes('/api/booking/availability?'));
   await site.getByLabel('Data', { exact: true }).fill(date);
-  expect(new URL((await requested).url()).searchParams.get('professionalId')).toBe(professional.id);
+  const response = await availabilityResponse;
+  expect(new URL(response.url()).searchParams.get('professionalId')).toBe(professional.id);
+  expect(response.status()).toBe(200);
+  await expect(site.getByText('Consultando horários…')).toBeHidden();
   await site.getByRole('checkbox', { name: /Serviço exclusivo/ }).uncheck();
   await site.getByRole('checkbox', { name: /Sem profissional/ }).check();
   await expect(site.getByText(/Nenhum profissional realiza todos os serviços selecionados/)).toBeVisible();
