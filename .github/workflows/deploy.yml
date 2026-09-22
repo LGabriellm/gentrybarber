@@ -28,7 +28,10 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
-          fingerprint: ${{ secrets.VPS_SSH_FINGERPRINT }}
+          # Host fingerprints are public. Pinning the exact ECDSA key here
+          # avoids whitespace/line-break corruption in repository secrets.
+          fingerprint: SHA256:3jznb3JdQinBPNtXDIMgOq+Y5tZgB3v6t3/hRp6Kyrg
+          protocol: tcp4
           port: 22
           command_timeout: 40m
           script: |
