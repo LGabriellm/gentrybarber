@@ -3,6 +3,8 @@ import { AccessError } from '@platform/types';
 import { tenantSlugSchema } from '@platform/tenancy';
 import { z } from 'zod';
 import { LocationOperations } from './locations';
+import { CatalogOperations } from './catalog';
+import { hashPassword } from 'better-auth/crypto';
 
 const identifier = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
 const pagination = { q: z.string().trim().max(120).default(''), page: z.coerce.number().int().min(1).max(10000).default(1) };
@@ -17,6 +19,98 @@ const createInput = z.object({ ...tenantFields, ownerEmail: z.email().trim().toL
 /** All callers must establish SUPER_ADMIN authority in FoundationServices first. */
 export class AdminService {
   constructor(private readonly db: PrismaClient) {}
+  async tenantActor(actorUserId: string, tenantId: string) {
+    identifier.parse(tenantId);
+    const tenant = await this.db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    if (!tenant) throw new AccessError('NOT_FOUND');
+    return { tenant, userId: actorUserId };
+  }
+  async userDetail(id: string) {
+    identifier.parse(id);
+    const [user, tenants, roles] = await Promise.all([
+      this.db.user.findUnique({ where: { id }, select: {
+        id: true, name: true, email: true, emailVerified: true, platformRole: true, createdAt: true, updatedAt: true,
+        memberships: { orderBy: { createdAt: 'asc' }, select: { id: true, tenantId: true, status: true, roleId: true, role: { select: { key: true, name: true } }, tenant: { select: { name: true, slug: true } } } },
+        _count: { select: { sessions: true } }, accounts: { select: { providerId: true, password: true } },
+      } }),
+      this.db.tenant.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, status: true } }),
+      this.db.role.findMany({ orderBy: { name: 'asc' }, select: { id: true, key: true, name: true } }),
+    ]);
+    if (!user) throw new AccessError('NOT_FOUND');
+    return { ...user, hasPassword: user.accounts.some(account => account.providerId === 'credential' && !!account.password), accounts: undefined, tenantOptions: tenants, roleOptions: roles };
+  }
+  async updateUser(actorUserId: string, id: string, body: unknown) {
+    identifier.parse(id);
+    const input = z.discriminatedUnion('action', [
+      z.object({ action: z.literal('update'), name: z.string().trim().min(2).max(120), email: z.email().trim().toLowerCase().max(254), platformRole: z.enum(['USER', 'SUPER_ADMIN']), emailVerified: z.boolean(), expectedUpdatedAt: z.iso.datetime() }).strict(),
+      z.object({ action: z.literal('set_password'), password: z.string().min(12).max(128) }).strict(),
+      z.object({ action: z.literal('revoke_sessions') }).strict(),
+      z.object({ action: z.literal('upsert_membership'), tenantId: identifier, roleId: identifier, status: z.enum(['INVITED', 'ACTIVE', 'SUSPENDED']) }).strict(),
+      z.object({ action: z.literal('remove_membership'), membershipId: identifier }).strict(),
+    ]).parse(body);
+    const target = await this.db.user.findUnique({ where: { id }, select: { id: true, email: true, platformRole: true, updatedAt: true } });
+    if (!target) throw new AccessError('NOT_FOUND');
+    if (input.action === 'set_password') {
+      const password = await hashPassword(input.password);
+      return this.db.$transaction(async tx => {
+        const account = await tx.account.findFirst({ where: { userId: id, providerId: 'credential' }, select: { id: true } });
+        if (account) await tx.account.update({ where: { id: account.id }, data: { password } });
+        else await tx.account.create({ data: { id: crypto.randomUUID(), userId: id, providerId: 'credential', issuer: 'local:credential', accountId: id, password } });
+        await tx.session.deleteMany({ where: { userId: id } });
+        await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_password_set', resource: 'User', resourceId: id } });
+        return { success: true };
+      });
+    }
+    if (input.action === 'revoke_sessions') {
+      return this.db.$transaction(async tx => {
+        const result = await tx.session.deleteMany({ where: { userId: id } });
+        await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_sessions_revoked', resource: 'User', resourceId: id, metadata: { count: result.count } } });
+        return { success: true, revoked: result.count };
+      });
+    }
+    if (input.action === 'update') {
+      if (actorUserId === id && input.platformRole !== 'SUPER_ADMIN') throw new AccessError('CONFLICT');
+      const { expectedUpdatedAt, action: _action, ...fields } = input;
+      return this.db.$transaction(async tx => {
+        const changed = await tx.user.updateMany({ where: { id, updatedAt: new Date(expectedUpdatedAt) }, data: fields });
+        if (changed.count !== 1) throw new AccessError('CONFLICT');
+        await tx.auditLog.create({ data: { tenantId: null, actorUserId, action: 'admin.user_updated', resource: 'User', resourceId: id, metadata: { previousRole: target.platformRole, platformRole: fields.platformRole, previousEmail: target.email, email: fields.email } } });
+        return { success: true };
+      });
+    }
+    if (input.action === 'upsert_membership') {
+      return this.db.$transaction(async tx => {
+        const [tenant, role] = await Promise.all([tx.tenant.findUnique({ where: { id: input.tenantId }, select: { id: true } }), tx.role.findUnique({ where: { id: input.roleId }, select: { id: true, key: true } })]);
+        if (!tenant || !role) throw new AccessError('NOT_FOUND');
+        const membership = await tx.membership.upsert({ where: { tenantId_userId: { tenantId: input.tenantId, userId: id } }, create: { tenantId: input.tenantId, userId: id, roleId: input.roleId, status: input.status }, update: { roleId: input.roleId, status: input.status } });
+        await tx.auditLog.create({ data: { tenantId: input.tenantId, actorUserId, action: 'admin.membership_upserted', resource: 'Membership', resourceId: membership.id, metadata: { userId: id, role: role.key, status: input.status } } });
+        return { success: true };
+      });
+    }
+    return this.db.$transaction(async tx => {
+      const membership = await tx.membership.findFirst({ where: { id: input.membershipId, userId: id }, select: { id: true, tenantId: true, status: true, role: { select: { key: true } } } });
+      if (!membership) throw new AccessError('NOT_FOUND');
+      if (membership.status === 'ACTIVE' && membership.role.key === 'OWNER') {
+        const owners = await tx.membership.count({ where: { tenantId: membership.tenantId, status: 'ACTIVE', role: { key: 'OWNER' } } });
+        if (owners <= 1) throw new AccessError('CONFLICT');
+      }
+      await tx.membership.delete({ where: { id: membership.id } });
+      await tx.auditLog.create({ data: { tenantId: membership.tenantId, actorUserId, action: 'admin.membership_removed', resource: 'Membership', resourceId: membership.id, metadata: { userId: id } } });
+      return { success: true };
+    });
+  }
+  async catalog(actorUserId: string, tenantId: string, resource: 'services' | 'professionals', operation: 'list' | 'create' | 'update', body?: unknown, resourceId?: string) {
+    const actor = await this.tenantActor(actorUserId, tenantId);
+    const catalog = new CatalogOperations(this.db);
+    if (resource === 'services') {
+      if (operation === 'list') return catalog.listServices(actor);
+      if (operation === 'create') return catalog.createService(actor, body);
+      return catalog.updateService(actor, identifier.parse(resourceId), body);
+    }
+    if (operation === 'list') return catalog.listProfessionals(actor);
+    if (operation === 'create') return catalog.createProfessional(actor, body);
+    return catalog.updateProfessional(actor, identifier.parse(resourceId), body);
+  }
   async detail(id: string) {
     identifier.parse(id);
     const tenant = await this.db.tenant.findUnique({ where: { id }, select: {

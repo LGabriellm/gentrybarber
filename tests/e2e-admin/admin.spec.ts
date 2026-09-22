@@ -125,6 +125,26 @@ test('cadastro de usuário e planos encaminha origem e preserva a composição d
   }
 });
 
+test('detalhe do usuário define senha e revoga sessões sem expor credenciais', async ({ page }) => {
+  await login(page);
+  const created = await db.user.upsert({
+    where: { email: `${prefix}-created@example.test` },
+    create: { id: `${prefix}-managed`, name: 'Novo usuário de teste', email: `${prefix}-created@example.test` },
+    update: {},
+  });
+  await page.goto(`/users/${created.id}`);
+  await expect(page.getByRole('heading', { name: 'Senha e sessões' })).toBeVisible();
+  const newPassword = 'Senha administrativa fictícia 123';
+  await page.getByRole('textbox', { name: /^Nova senha/ }).fill(newPassword);
+  await page.getByRole('textbox', { name: /^Confirmar nova senha/ }).fill(newPassword);
+  await page.getByRole('button', { name: 'Definir nova senha' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Senha definida' })).toBeVisible();
+  const account = await db.account.findFirstOrThrow({ where: { userId: created.id, providerId: 'credential' } });
+  expect(account.password).toBeTruthy();
+  expect(account.password).not.toContain(newPassword);
+  await expect(page.getByText('Senha definida', { exact: true })).toBeVisible();
+});
+
 test('admin global: indicadores, buscas, filtros e planos', async ({ page }, testInfo) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await login(page);
@@ -181,6 +201,25 @@ test('cadastro de barbearia com proprietário verificado e unidade persistidos',
   await page.getByLabel('Unidade ativa', { exact: true }).uncheck();
   await page.getByRole('button', { name: 'Cadastrar unidade', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Unidade em preparação' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Serviços', exact: true })).toBeVisible();
+  const serviceSection = page.locator('#servicos');
+  await serviceSection.getByRole('combobox', { name: /^Unidade/ }).selectOption(tenant.locations[0]!.id);
+  await serviceSection.getByLabel('Nome do serviço').fill('Corte administrativo');
+  await serviceSection.getByLabel('Preço (R$)').fill('55,00');
+  await serviceSection.getByLabel('Duração em minutos').fill('45');
+  await serviceSection.getByRole('button', { name: 'Adicionar serviço' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Serviço cadastrado' })).toBeVisible();
+  await expect(serviceSection.getByRole('heading', { name: 'Corte administrativo' })).toBeVisible();
+  const scheduleSection = page.locator('#horarios');
+  await scheduleSection.getByRole('button', { name: 'Adicionar intervalo' }).click();
+  const monday = scheduleSection.locator('.admin-hours-row').first();
+  await monday.getByLabel('Dia').selectOption('1');
+  await monday.getByLabel('Abre').fill('09:00');
+  await monday.getByLabel('Fecha').fill('18:00');
+  await scheduleSection.getByRole('button', { name: 'Salvar expediente' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Expediente semanal salvo' })).toBeVisible();
+  expect(await db.businessHour.count({ where: { tenantId: tenant.id, locationId: tenant.locations[0]!.id } })).toBe(1);
   await page.reload();
   await expect(page.getByLabel('E-mail de contato')).toHaveValue('contato@example.test');
   await expect(page.getByRole('heading', { name: 'Unidade Centro' })).toBeVisible();

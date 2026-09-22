@@ -1,0 +1,21 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["apps/admin"],
+  "locale": "pt-BR",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Form", "Scrollbar", "CRUD"],
+  "ownership": {
+    "Select/Listbox": "native"
+  },
+  "requiredCommands": ["unit", "e2e", "accessibility", "premium"],
+  "commands": {
+    "unit": "pnpm test",
+    "e2e": "pnpm test:e2e:admin",
+    "accessibility": "pnpm test:e2e:admin",
+    "premium": "python frontend-design-premium/scripts/audit_project.py . --mode strict"
+  },
+  "evidence": {
+    "crudFullFlow": "tests/e2e-admin/admin.spec.ts",
+    "failurePaths": "apps/api/test/admin.integration.test.ts"
+  }
+}

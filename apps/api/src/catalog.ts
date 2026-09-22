@@ -54,16 +54,17 @@ async function requireServices(tx: Prisma.TransactionClient, tenantId: string, l
   const count = await tx.service.count({ where: { tenantId, locationId, id: { in: serviceIds } } });
   if (count !== serviceIds.length) throw new AccessError('NOT_FOUND');
 }
-async function audit(tx: Prisma.TransactionClient, context: TenantContext, resource: 'Service' | 'Professional', resourceId: string, action: string): Promise<void> {
+async function audit(tx: Prisma.TransactionClient, context: CatalogActor, resource: 'Service' | 'Professional', resourceId: string, action: string): Promise<void> {
   await tx.auditLog.create({ data: { tenantId: context.tenant.id, actorUserId: context.userId, action, resource, resourceId } });
 }
 
-/** Every operation receives the authenticated context assembled by the server. */
-export class CatalogService {
+export type CatalogActor = { tenant: { id: string }; userId: string };
+
+/** Shared tenant-scoped operations. Callers establish membership or platform authority first. */
+export class CatalogOperations {
   constructor(private readonly db: PrismaClient) {}
 
-  async listServices(context: TenantContext): Promise<ServiceCatalog> {
-    requirePermission(context, 'services.manage');
+  async listServices(context: CatalogActor): Promise<ServiceCatalog> {
     const tenantId = context.tenant.id;
     const [items, locations] = await Promise.all([
       this.db.service.findMany({ where: { tenantId }, select: serviceSelect, orderBy: [...orderBy] }),
@@ -72,8 +73,7 @@ export class CatalogService {
     return { items: items.map(serviceItem), locations };
   }
 
-  async listProfessionals(context: TenantContext): Promise<ProfessionalCatalog> {
-    requirePermission(context, 'professionals.manage');
+  async listProfessionals(context: CatalogActor): Promise<ProfessionalCatalog> {
     const tenantId = context.tenant.id;
     const [items, locations, services] = await Promise.all([
       this.db.professional.findMany({
@@ -91,8 +91,7 @@ export class CatalogService {
     };
   }
 
-  async createService(context: TenantContext, input: unknown): Promise<CatalogServiceItem> {
-    requirePermission(context, 'services.manage');
+  async createService(context: CatalogActor, input: unknown): Promise<CatalogServiceItem> {
     const fields = createServiceSchema.parse(input);
     const tenantId = context.tenant.id;
     return this.db.$transaction(async tx => {
@@ -103,8 +102,7 @@ export class CatalogService {
     });
   }
 
-  async updateService(context: TenantContext, id: string, input: unknown): Promise<CatalogServiceItem> {
-    requirePermission(context, 'services.manage');
+  async updateService(context: CatalogActor, id: string, input: unknown): Promise<CatalogServiceItem> {
     const resourceId = idSchema.parse(id);
     const { expectedVersion, ...fields } = updateServiceSchema.parse(input);
     const tenantId = context.tenant.id;
@@ -124,8 +122,7 @@ export class CatalogService {
     });
   }
 
-  async createProfessional(context: TenantContext, input: unknown): Promise<CatalogProfessional> {
-    requirePermission(context, 'professionals.manage');
+  async createProfessional(context: CatalogActor, input: unknown): Promise<CatalogProfessional> {
     const { serviceIds, ...fields } = createProfessionalSchema.parse(input);
     const tenantId = context.tenant.id;
     return this.db.$transaction(async tx => {
@@ -141,8 +138,7 @@ export class CatalogService {
     });
   }
 
-  async updateProfessional(context: TenantContext, id: string, input: unknown): Promise<CatalogProfessional> {
-    requirePermission(context, 'professionals.manage');
+  async updateProfessional(context: CatalogActor, id: string, input: unknown): Promise<CatalogProfessional> {
     const resourceId = idSchema.parse(id);
     const { expectedVersion, serviceIds, ...fields } = updateProfessionalSchema.parse(input);
     const tenantId = context.tenant.id;
@@ -166,5 +162,33 @@ export class CatalogService {
       await audit(tx, context, 'Professional', resourceId, 'professional.updated');
       return professionalItem(item, serviceIds);
     });
+  }
+}
+
+/** Membership entry point: permissions are enforced before shared operations run. */
+export class CatalogService extends CatalogOperations {
+  override async listServices(context: TenantContext) {
+    requirePermission(context, 'services.manage');
+    return super.listServices(context);
+  }
+  override async listProfessionals(context: TenantContext) {
+    requirePermission(context, 'professionals.manage');
+    return super.listProfessionals(context);
+  }
+  override async createService(context: TenantContext, input: unknown) {
+    requirePermission(context, 'services.manage');
+    return super.createService(context, input);
+  }
+  override async updateService(context: TenantContext, id: string, input: unknown) {
+    requirePermission(context, 'services.manage');
+    return super.updateService(context, id, input);
+  }
+  override async createProfessional(context: TenantContext, input: unknown) {
+    requirePermission(context, 'professionals.manage');
+    return super.createProfessional(context, input);
+  }
+  override async updateProfessional(context: TenantContext, id: string, input: unknown) {
+    requirePermission(context, 'professionals.manage');
+    return super.updateProfessional(context, id, input);
   }
 }

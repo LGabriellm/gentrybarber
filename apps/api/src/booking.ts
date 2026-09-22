@@ -75,6 +75,7 @@ type LocationRecord = Prisma.LocationGetPayload<{ select: typeof locationSelect 
 type CustomerRecord = Prisma.CustomerGetPayload<{ select: typeof customerSelect }>;
 type TimeOffRecord = Prisma.TimeOffGetPayload<{ select: typeof timeOffSelect }>;
 type Tx = Prisma.TransactionClient;
+export type ScheduleActor = { tenant: { id: string }; userId: string };
 type Offering = { location: LocationRecord; services: { serviceId: string; name: string; durationMinutes: number; priceCents: number }[]; durationMinutes: number; totalCents: number };
 
 function appointmentView(record: AppointmentRecord): AppointmentView {
@@ -114,7 +115,7 @@ async function findAppointment(tx: Tx, tenantId: string, resourceId: string): Pr
   if (!record) throw new AccessError('NOT_FOUND');
   return record;
 }
-async function audit(tx: Tx, context: TenantContext | { tenantId: string; actorUserId: string | null }, action: string, resource: string, resourceId: string) {
+async function audit(tx: Tx, context: TenantContext | ScheduleActor | { tenantId: string; actorUserId: string | null }, action: string, resource: string, resourceId: string) {
   const tenantId = 'tenant' in context ? context.tenant.id : context.tenantId;
   const actorUserId = 'userId' in context ? context.userId : ('actorUserId' in context ? context.actorUserId : null);
   await tx.auditLog.create({ data: { tenantId, actorUserId, action, resource, resourceId } });
@@ -159,15 +160,18 @@ export class BookingService {
     return { location: locationView(location), businessHours, professionals: professionals.map(({ schedules, ...item }) => ({ ...item, windows: schedules })), timeOffs: timeOffs.map(timeOffView) };
   }
 
+  async getScheduleForActor(context: ScheduleActor, query: unknown): Promise<ScheduleView> {
+    const { locationId } = scheduleQuery.parse(query);
+    return this.schedule(this.db, context.tenant.id, locationId);
+  }
+
   async getSchedule(context: TenantContext, query: unknown): Promise<ScheduleView> {
     authorize(context, 'appointments.read');
     const { locationId } = scheduleQuery.parse(query);
-    const professionalUserId = professionalScope(context);
-    return this.schedule(this.db, context.tenant.id, locationId, professionalUserId);
+    return this.schedule(this.db, context.tenant.id, locationId, professionalScope(context));
   }
 
-  async updateSchedule(context: TenantContext, input: unknown): Promise<ScheduleView> {
-    authorize(context, 'schedules.manage');
+  async updateScheduleForActor(context: ScheduleActor, input: unknown): Promise<ScheduleView> {
     const fields = scheduleInput.parse(input);
     const tenantId = context.tenant.id;
     return this.transaction(async tx => {
@@ -206,8 +210,12 @@ export class BookingService {
     });
   }
 
-  async createTimeOff(context: TenantContext, input: unknown): Promise<TimeOffView> {
+  async updateSchedule(context: TenantContext, input: unknown): Promise<ScheduleView> {
     authorize(context, 'schedules.manage');
+    return this.updateScheduleForActor(context, input);
+  }
+
+  async createTimeOffForActor(context: ScheduleActor, input: unknown): Promise<TimeOffView> {
     const fields = timeOffInput.parse(input);
     const tenantId = context.tenant.id;
     return this.transaction(async tx => {
@@ -227,8 +235,13 @@ export class BookingService {
     });
   }
 
-  async deleteTimeOff(context: TenantContext, resourceId: string): Promise<{ deleted: true }> {
+
+  async createTimeOff(context: TenantContext, input: unknown): Promise<TimeOffView> {
     authorize(context, 'schedules.manage');
+    return this.createTimeOffForActor(context, input);
+  }
+
+  async deleteTimeOffForActor(context: ScheduleActor, resourceId: string): Promise<{ deleted: true }> {
     id.parse(resourceId);
     const tenantId = context.tenant.id;
     const candidate = await this.db.timeOff.findFirst({ where: { tenantId, id: resourceId }, select: { locationId: true } });
@@ -242,6 +255,12 @@ export class BookingService {
       await audit(tx, context, 'time_off.deleted', 'TimeOff', resourceId);
       return { deleted: true };
     });
+  }
+
+
+  async deleteTimeOff(context: TenantContext, resourceId: string): Promise<{ deleted: true }> {
+    authorize(context, 'schedules.manage');
+    return this.deleteTimeOffForActor(context, resourceId);
   }
 
   async listCustomers(context: TenantContext, query: unknown): Promise<{ items: CustomerView[]; page: number; hasMore: boolean }> {

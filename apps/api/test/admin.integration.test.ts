@@ -14,6 +14,12 @@ describe('Global administration', () => {
   afterAll(async () => {
     const where = { tenant: { slug: { startsWith: prefix } } };
     await db.auditLog.deleteMany({ where });
+    await db.timeOff.deleteMany({ where });
+    await db.professionalSchedule.deleteMany({ where });
+    await db.businessHour.deleteMany({ where });
+    await db.professionalService.deleteMany({ where });
+    await db.professional.deleteMany({ where });
+    await db.service.deleteMany({ where });
     await db.location.deleteMany({ where });
     await db.tenant.deleteMany({ where: { slug: { startsWith: prefix } } });
     await db.user.deleteMany({ where: { id: ownerId } });
@@ -31,6 +37,8 @@ describe('Global administration', () => {
     expect((await bookingWrite('PATCH', `/v1/admin/tenants/${bookingTenant()}`, {})).statusCode).toBe(403);
     expect((await bookingWrite('POST', `/v1/admin/tenants/${bookingTenant()}/locations`, {})).statusCode).toBe(403);
     expect((await bookingWrite('PATCH', `/v1/admin/tenants/${bookingTenant()}/locations/unknown`, {})).statusCode).toBe(403);
+    expect((await bookingGet(`/v1/admin/users/${ownerId}`)).statusCode).toBe(403);
+    expect((await bookingWrite('POST', `/v1/admin/tenants/${bookingTenant()}/services`, {})).statusCode).toBe(403);
     await db.user.update({ where: { id: operator.id }, data: { platformRole: 'SUPER_ADMIN' } });
   });
   it('validates origin, strict fields and verified owner before any write', async () => {
@@ -101,5 +109,34 @@ describe('Global administration', () => {
     expect((await bookingWrite('PATCH', `${path}/${location.id}`, update)).statusCode).toBe(409);
     expect((await bookingWrite('POST', path, { ...payload, name: 'Outra unidade ativa', active: true })).statusCode).toBe(403);
     expect(await db.auditLog.count({ where: { tenantId: tenant.id, resourceId: location.id, actorUserId: operator.id, action: 'location.updated' } })).toBe(1);
+  });
+  it('manages user identity, password, sessions and tenant memberships with audits', async () => {
+    const detail = (await bookingGet(`/v1/admin/users/${ownerId}`)).json();
+    expect(detail).toMatchObject({ id: ownerId, hasPassword: false, _count: { sessions: 0 } });
+    expect(detail.accounts).toBeUndefined();
+    const update = { action: 'update', name: 'Owner administrado', email: `${prefix}-managed@example.test`, platformRole: 'USER', emailVerified: true, expectedUpdatedAt: detail.updatedAt };
+    expect((await bookingWrite('PATCH', `/v1/admin/users/${ownerId}`, update)).statusCode).toBe(200);
+    expect((await bookingWrite('PATCH', `/v1/admin/users/${ownerId}`, update)).statusCode).toBe(409);
+    expect((await bookingWrite('PATCH', `/v1/admin/users/${ownerId}`, { action: 'set_password', password: 'short' })).statusCode).toBe(400);
+    expect((await bookingWrite('PATCH', `/v1/admin/users/${ownerId}`, { action: 'set_password', password: 'A secure fixture password 123' })).statusCode).toBe(200);
+    const account = await db.account.findFirst({ where: { userId: ownerId, providerId: 'credential' } });
+    expect(account?.password).toBeTruthy();
+    expect(account?.password).not.toContain('secure fixture');
+    expect((await bookingWrite('POST', `/v1/admin/users/${ownerId}/password-reset`, {})).statusCode).toBe(201);
+    expect(await db.auditLog.count({ where: { actorUserId: operator.id, resourceId: ownerId, action: { in: ['admin.user_updated', 'admin.user_password_set', 'admin.user_password_reset_requested'] } } })).toBe(3);
+  });
+  it('manages catalog and business hours through platform authority without cross-tenant access', async () => {
+    const tenant = await db.tenant.findUniqueOrThrow({ where: { slug: input().slug }, include: { locations: true } });
+    const location = tenant.locations.find(item => item.active)!;
+    const created = await bookingWrite('POST', `/v1/admin/tenants/${tenant.id}/services`, { locationId: location.id, name: 'Serviço administrativo', description: null, durationMinutes: 45, priceCents: 5500, active: true });
+    expect(created.statusCode, created.body).toBe(201);
+    const service = created.json();
+    expect(service.locationId).toBe(location.id);
+    expect((await bookingGet(`/v1/admin/tenants/${tenant.id}/services`)).json().items).toEqual(expect.arrayContaining([expect.objectContaining({ id: service.id })]));
+    expect((await bookingWrite('PATCH', `/v1/admin/tenants/${bookingTenant()}/services/${service.id}`, { name: service.name, description: null, durationMinutes: 45, priceCents: 5500, active: false, expectedVersion: service.version })).statusCode).toBe(404);
+    const schedule = (await bookingGet(`/v1/admin/tenants/${tenant.id}/schedule?locationId=${location.id}`)).json();
+    expect((await bookingWrite('PUT', `/v1/admin/tenants/${tenant.id}/schedule`, { locationId: location.id, expectedVersion: schedule.location.version, businessHours: [{ weekday: 1, startMinute: 540, endMinute: 1080 }], professionals: [] })).statusCode).toBe(200);
+    expect(await db.businessHour.count({ where: { tenantId: tenant.id, locationId: location.id } })).toBe(1);
+    expect(await db.auditLog.count({ where: { tenantId: tenant.id, actorUserId: operator.id, action: { in: ['service.created', 'schedule.updated'] } } })).toBe(2);
   });
 });

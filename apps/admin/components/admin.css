@@ -20,3 +20,18 @@
 .admin-member-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; padding: 20px 0; border-bottom: 1px solid #e8ede5; font-size: 13px; overflow-wrap: anywhere; }
 .admin-member-list small { display: block; color: #607465; margin-top: 5px; }
 @media (max-width: 700px) { .admin-location-grid { grid-template-columns: 1fr; padding: 16px; } .admin-detail-summary { gap: 12px; } }
+.admin-operation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 24px; }
+.admin-wide-field { grid-column: 1 / -1; }
+.admin-form textarea { width: 100%; resize: none; }
+.admin-check-grid { border: 1px solid var(--admin-line); border-radius: 10px; padding: 18px; margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.admin-check-grid legend { padding: 0 8px; font-size: 12px; color: var(--admin-muted); }
+.admin-hours-grid { display: grid; gap: 10px; }
+.admin-hours-row { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(2, minmax(110px, .7fr)) auto; gap: 14px; align-items: end; border-bottom: 1px solid var(--admin-line); padding: 12px 0; }
+.admin-hours-row:last-child { border-bottom: 0; }
+.admin-panel-heading > label { display: grid; gap: 6px; font-size: 11px; color: var(--admin-muted); }
+.admin-panel-heading > label select { min-width: 180px; }
+.admin-inline-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; max-width: 520px; }
+.admin-inline-confirm p { width: 100%; margin: 0; color: #7b3d2d; }
+.admin-app .button.danger { background: #8a3728; color: #fff; border-color: #8a3728; }
+@media (max-width: 1000px) { .admin-operation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .admin-check-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .admin-operation-grid { grid-template-columns: 1fr; padding: 16px; } .admin-check-grid { grid-template-columns: 1fr; } .admin-hours-row { grid-template-columns: 1fr 1fr; } .admin-hours-row > .button { grid-column: 1 / -1; } }

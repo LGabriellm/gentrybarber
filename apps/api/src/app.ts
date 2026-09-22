@@ -10,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -189,6 +190,24 @@ class FoundationController {
     return this.services.adminCreateUser(request, body);
   }
 
+  @Get("/v1/admin/users/:id")
+  @ApiCookieAuth()
+  adminUser(@Req() request: FastifyRequest, @Param("id") id: string) {
+    return this.services.adminUser(request, id);
+  }
+
+  @Patch("/v1/admin/users/:id")
+  @ApiCookieAuth()
+  adminUpdateUser(@Req() request: FastifyRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.services.adminUpdateUser(request, id, body);
+  }
+
+  @Post("/v1/admin/users/:id/password-reset")
+  @ApiCookieAuth()
+  adminRequestPasswordReset(@Req() request: FastifyRequest, @Param("id") id: string) {
+    return this.services.adminRequestPasswordReset(request, id);
+  }
+
   @Get("/v1/admin/plans")
   @ApiCookieAuth()
   adminPlans(@Req() request: FastifyRequest) {
@@ -245,6 +264,57 @@ class FoundationController {
   @ApiCookieAuth()
   adminUpdateLocation(@Req() request: FastifyRequest, @Param('id') id: string, @Param('locationId') locationId: string, @Body() body: unknown) {
     return this.services.adminLocation(request, id, locationId, body);
+  }
+
+  @Get('/v1/admin/tenants/:id/services')
+  @ApiCookieAuth()
+  adminServices(@Req() request: FastifyRequest, @Param('id') id: string) {
+    return this.services.adminCatalog(request, id, 'services', 'list');
+  }
+  @Post('/v1/admin/tenants/:id/services')
+  @ApiCookieAuth()
+  adminCreateService(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.services.adminCatalog(request, id, 'services', 'create', body);
+  }
+  @Patch('/v1/admin/tenants/:id/services/:resourceId')
+  @ApiCookieAuth()
+  adminUpdateService(@Req() request: FastifyRequest, @Param('id') id: string, @Param('resourceId') resourceId: string, @Body() body: unknown) {
+    return this.services.adminCatalog(request, id, 'services', 'update', body, resourceId);
+  }
+  @Get('/v1/admin/tenants/:id/professionals')
+  @ApiCookieAuth()
+  adminProfessionals(@Req() request: FastifyRequest, @Param('id') id: string) {
+    return this.services.adminCatalog(request, id, 'professionals', 'list');
+  }
+  @Post('/v1/admin/tenants/:id/professionals')
+  @ApiCookieAuth()
+  adminCreateProfessional(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.services.adminCatalog(request, id, 'professionals', 'create', body);
+  }
+  @Patch('/v1/admin/tenants/:id/professionals/:resourceId')
+  @ApiCookieAuth()
+  adminUpdateProfessional(@Req() request: FastifyRequest, @Param('id') id: string, @Param('resourceId') resourceId: string, @Body() body: unknown) {
+    return this.services.adminCatalog(request, id, 'professionals', 'update', body, resourceId);
+  }
+  @Get('/v1/admin/tenants/:id/schedule')
+  @ApiCookieAuth()
+  adminSchedule(@Req() request: FastifyRequest, @Param('id') id: string) {
+    return this.services.adminSchedule(request, id, 'read');
+  }
+  @Put('/v1/admin/tenants/:id/schedule')
+  @ApiCookieAuth()
+  adminUpdateSchedule(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.services.adminSchedule(request, id, 'update', body);
+  }
+  @Post('/v1/admin/tenants/:id/time-offs')
+  @ApiCookieAuth()
+  adminCreateTimeOff(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.services.adminSchedule(request, id, 'create-time-off', body);
+  }
+  @Delete('/v1/admin/tenants/:id/time-offs/:resourceId')
+  @ApiCookieAuth()
+  adminDeleteTimeOff(@Req() request: FastifyRequest, @Param('id') id: string, @Param('resourceId') resourceId: string) {
+    return this.services.adminSchedule(request, id, 'delete-time-off', undefined, resourceId);
   }
 
   @Get('/v1/admin/tenants/:id/website')

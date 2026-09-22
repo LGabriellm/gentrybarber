@@ -122,6 +122,25 @@ export class FoundationServices {
     await this.requireSuperAdmin(request);
     return new AdminService(this.db).users(request.query);
   }
+  async adminUser(request: FastifyRequest, id: string) {
+    await this.requireSuperAdmin(request);
+    z.object({}).strict().parse(request.query);
+    return new AdminService(this.db).userDetail(id);
+  }
+  async adminUpdateUser(request: FastifyRequest, id: string, body: unknown) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    return new AdminService(this.db).updateUser(session.user.id, id, body);
+  }
+  async adminRequestPasswordReset(request: FastifyRequest, id: string) {
+    const session = await this.requireSuperAdmin(request);
+    this.adminWrite(request);
+    const user = await this.db.user.findUnique({ where: { id }, select: { id: true, email: true } });
+    if (!user) throw new AccessError('NOT_FOUND');
+    await this.auth.api.requestPasswordReset({ body: { email: user.email } });
+    await this.db.auditLog.create({ data: { tenantId: null, actorUserId: session.user.id, action: 'admin.user_password_reset_requested', resource: 'User', resourceId: user.id } });
+    return { success: true };
+  }
   async adminPlans(request: FastifyRequest) {
     await this.requireSuperAdmin(request);
     z.object({}).strict().parse(request.query);
@@ -161,6 +180,21 @@ export class FoundationServices {
     const session = await this.requireSuperAdmin(request);
     this.adminWrite(request);
     return new AdminService(this.db).location(session.user.id, id, locationId, body);
+  }
+  async adminCatalog(request: FastifyRequest, tenantId: string, resource: 'services' | 'professionals', operation: 'list' | 'create' | 'update', body?: unknown, resourceId?: string) {
+    const session = await this.requireSuperAdmin(request);
+    if (operation === 'list') z.object({}).strict().parse(request.query); else this.adminWrite(request);
+    return new AdminService(this.db).catalog(session.user.id, tenantId, resource, operation, body, resourceId);
+  }
+  async adminSchedule(request: FastifyRequest, tenantId: string, operation: 'read' | 'update' | 'create-time-off' | 'delete-time-off', body?: unknown, resourceId?: string) {
+    const session = await this.requireSuperAdmin(request);
+    const actor = await new AdminService(this.db).tenantActor(session.user.id, tenantId);
+    const booking = new BookingService(this.db);
+    if (operation === 'read') return booking.getScheduleForActor(actor, request.query);
+    this.adminWrite(request);
+    if (operation === 'update') return booking.updateScheduleForActor(actor, body);
+    if (operation === 'create-time-off') return booking.createTimeOffForActor(actor, body);
+    return booking.deleteTimeOffForActor(actor, resourceId ?? '');
   }
   async adminUpdateTenant(request: FastifyRequest, id: string, body: unknown) {
     const session = await this.requireSuperAdmin(request);
