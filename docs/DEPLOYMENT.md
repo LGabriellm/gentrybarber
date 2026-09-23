@@ -24,13 +24,13 @@ Após subir, carregar dados locais com `docker compose run --rm migrate pnpm db:
 
 Validação desta configuração em 15/09/2026: sintaxe YAML e aliases validados, dez serviços identificados e dependências de inicialização conferidas; `git diff --check`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (255 testes) e `pnpm build` passaram. As primeiras tentativas encontraram restrições de acesso às dependências locais; a execução com acesso autorizado passou. Docker não está instalado neste ambiente: `docker compose config`, construção das imagens e execução da stack não foram verificadas. Testes de integração e de navegador não foram executados nesta alteração de infraestrutura.
 
-## CI de pull request
+## CI e gate de publicação
 
 Instalar a partir do lockfile → preparar dependências → validar schema e gerar client → aplicar migration em banco descartável → lint → typecheck → unit/integration → build. Jobs devem falhar quando uma etapa exigida falha. Cache inclui lockfile e configuração relevante; secrets não entram nos artefatos.
 
 A [CI](../.github/workflows/ci.yml) usa Node.js 24, pnpm 11.19.0, PostgreSQL 17 em banco `platform_test` e Redis. Aplica migration antes da integração, usa Vitest 5 para testes e instala Chromium e WebKit para as verificações Playwright. Credenciais fixas do workflow são exclusivamente para os serviços efêmeros da CI.
 
-A CI da Foundation é um gate de qualidade. Não configura deploy automático produtivo. Infraestrutura, domínio, secrets e ambiente de destino ainda precisam ser definidos. Arquivo de workflow criado não significa execução remota observada.
+A CI da Foundation valida pull requests e commits enviados para `main`. O job `package-release` só roda após `verify` passar em um evento `push` para `main`: constrói as imagens de API, worker, site público, dashboard e admin e publica o artefato `production-release-<sha>-<run_id>-<attempt>`. O pacote contém `REVISION`, `RELEASE_ID`, `IMAGE_IDS`, `images.tar.gz`, `config.tar.gz` e `SHA256SUMS`. Um pull request ou uma execução manual da CI não produz release. A existência desses workflows não comprova uma execução remota nem substitui a configuração de infraestrutura, domínio e secrets.
 
 ## Imagem de referência para API e worker
 
@@ -57,7 +57,7 @@ O build ativa `NEXT_STANDALONE=1` e rastreia dependências a partir da raiz do m
 
 A workflow `frontend-images.yml` constrói cada imagem e verifica HTTP, assets e usuário em Linux. Sua criação não comprova execução remota. Neste ambiente Windows, os builds standalone e `pnpm test:frontends` passaram para os três frontends, verificando inicialização HTTP e assets; containers não foram executados porque Docker não está instalado. Para repetir: `NEXT_STANDALONE=1 pnpm build` e `pnpm test:frontends` (no PowerShell, definir `$env:NEXT_STANDALONE='1'` antes do build). Validar as imagens em CI antes do primeiro release, além de login, cookies, CSP, hostname de tenant e domínio customizado no endereço final. Reverter usando a tag imutável anterior; não reverter migrations automaticamente.
 
-## Release de produção planejado
+## Release de produção
 
 O ingresso da VPS segue [ADR 0009](adr/0009-production-ingress-and-service-hostnames.md). Caddy é o único processo exposto em 80/443. API, site público, dashboard e admin publicam portas apenas em `127.0.0.1`; acessos por IP nas portas 3000–4000 devem falhar externamente.
 
@@ -79,7 +79,23 @@ Os hostnames exatos obtêm HTTPS automático pelo Caddy e exigem registros DNS v
 
 No GitHub, configurar a variável `PLATFORM_DOMAIN` e os secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` e `VPS_SSH_PASSPHRASE`. A chave pública correspondente precisa estar em `authorized_keys` do operador da VPS antes de remover o secret legado de senha. O fingerprint SHA256 público da chave de host ECDSA fica fixado e revisável no workflow; ao recriar a VPS ou rotacionar as chaves SSH, confirmá-lo diretamente no servidor e atualizar o arquivo. O workflow força IPv4, valida API, dashboard e admin por HTTPS e falha se a porta 4000 continuar acessível externamente.
 
-Se um clone preexistente tiver sido criado por `root`, corrigir uma única vez pelo console administrativo da VPS com `chown -R deploy:deploy /opt/barber-platform`, seguido de `touch /var/log/barber-deploy.log`, `chown deploy:deploy /var/log/barber-deploy.log` e `chmod 0640 /var/log/barber-deploy.log`. O setup aplica essas propriedades de forma reproduzível; não ampliar o `chown` para `/opt` ou outro diretório.
+### Revisão aprovada e artefato
+
+O deploy automático parte somente da execução concluída com sucesso da `Foundation CI` para um `push` em `main` deste repositório. O SHA publicado é o `head_sha` dessa execução, mesmo que `main` avance durante o deploy. O workflow identifica o artefato pelo ID da execução, SHA e tentativa; não escolhe o estado corrente da branch. Para repetir ou restaurar uma release pela interface do GitHub, iniciar `Deploy to VPS` manualmente com `ci_run_id` de uma execução de CI que tenha passado nesse mesmo repositório e no mesmo tipo de evento. O disparo manual consulta a execução antes de obter o pacote e não dispensa a CI.
+
+O runner confere `SHA256SUMS` e a revisão declarada no pacote antes de transferi-lo. A VPS repete a verificação de hash, confere o SHA e os IDs das cinco imagens após `docker load`, e só então executa migrations e sobe a stack. `compose.production.yaml` usa as imagens do `RELEASE_ID` com `pull_policy: never`: publicação não faz `git fetch`, `git reset`, `docker compose build` nem escolhe tags mutáveis. O pacote é a unidade de release; seu prazo no GitHub Actions é de 30 dias. Para auditoria ou rollback depois desse prazo, conservar uma cópia com controle de acesso e integridade verificada. A pasta de configuração na VPS não é uma fonte de código a publicar. Uma invocação direta de `deploy.sh` só é válida com o pacote e os identificadores verificados que o workflow fornece.
+
+Esse fluxo fixa o código e a configuração da release, mas ainda requer conferência operacional de secrets, DNS, backups, compatibilidade da migration e saúde real dos serviços. Não foi executado deploy remoto nesta alteração.
+
+Validação local em 23/09/2026: YAML, sintaxe dos scripts, `docker compose config`, lint, typecheck, 267 testes unitários, 142 testes de integração e build passaram. As cinco imagens Docker de aplicação foram construídas e inspecionadas localmente; as tags temporárias foram removidas após o teste. O empacotamento e os workflows ainda precisam passar na CI remota antes de qualquer publicação.
+
+### Preparação inicial da VPS
+
+Provisionar a VPS antes do primeiro deploy por um operador com acesso administrativo: executar `setup-vps.sh` como `root`, conferir Docker Compose, Caddy, usuário `deploy`, chave SSH, `/opt/barber-platform/.env.production` e `/var/log/barber-deploy.log`. O workflow de deploy não executa o setup, não cria `.env.production` e falha quando os pré-requisitos estão ausentes. Manter secrets fora do pacote e do repositório.
+
+Preencher `PLATFORM_DOMAIN`, `SMTP_HOST`, `SMTP_FROM` e as demais variáveis exigidas no arquivo de produção. O deploy valida os valores antes de migrar o banco e não substitui domínio ou SMTP ausente por valores fictícios.
+
+Se uma instalação preexistente em `/opt/barber-platform` tiver sido criada por `root`, corrigir uma única vez pelo console administrativo da VPS com `chown -R deploy:deploy /opt/barber-platform`, seguido de `touch /var/log/barber-deploy.log`, `chown deploy:deploy /var/log/barber-deploy.log` e `chmod 0640 /var/log/barber-deploy.log`. O setup aplica essas propriedades de forma reproduzível; não ampliar o `chown` para `/opt` ou outro diretório.
 
 Criar um tenant não publica automaticamente um site. A administração global exibe o estado de publicação e só oferece o endereço público depois do fluxo rascunho → aprovação → publicação. Um 404 antes da publicação é o isolamento esperado, não fallback para outro tenant.
 
@@ -95,7 +111,7 @@ Os proxies Next não encaminham IPs arbitrários. Sem roteamento direto pelo ing
 
 Os frontends geram CSP com nonce por requisição. Scripts externos e execução arbitrária não são permitidos; estilos inline continuam necessários aos tokens e componentes controlados. Previews fictícios locais nunca são liberados no modo de produção.
 
-1. Gerar artefatos imutáveis e registrar revisão e migration.
+1. Selecionar a execução de CI aprovada e registrar SHA, ID da execução, tentativa, `RELEASE_ID` e hashes do pacote.
 2. Conferir backup/restauração e compatibilidade entre versão anterior e nova.
 3. Aplicar migrations compatíveis de expansão antes do código dependente; executar alterações destrutivas em etapa posterior planejada.
 4. Publicar API, worker e frontends com health checks e configuração validada.
@@ -103,6 +119,14 @@ Os frontends geram CSP com nonce por requisição. Scripts externos e execução
 6. Acompanhar erros, fila e latência; interromper avanço e usar rollback previsto se gates falharem.
 
 Rollback de aplicação não reverte automaticamente banco. Preferir migrations forward e compatibilidade temporária; uma migration destrutiva exige plano específico. Rollback de tema muda a versão publicada e tem ciclo separado do deploy do Core.
+
+### Backup e ensaio de restauração
+
+Agendar o script da release ativa no cron do usuário `deploy`, por exemplo `0 3 * * * bash /opt/barber-platform/current/infra/vps/backup.sh` (03:00 no fuso da VPS). Ele carrega `/opt/barber-platform/.env.production` explicitamente e usa o `RELEASE_ID` de `current` para resolver o Compose, sem depender do diretório inicial do cron. Antes de consultar o banco, valida a configuração; grava o dump PostgreSQL em arquivo temporário privado, verifica que o arquivo não está vazio e que `pg_restore --list` o lê, e só então o move para o nome definitivo. Os dumps locais em `/opt/barber-platform/backups` são mantidos por 14 dias. Falha na criação ou validação não deve deixar um arquivo definitivo parcial nem rotacionar cópias anteriores.
+
+Ensaiar a recuperação periodicamente com um dump e PostgreSQL 17 em ambiente descartável, separado da VPS de produção: executar `pg_restore --list`, restaurar o arquivo em um banco vazio com `pg_restore --exit-on-error --no-owner --no-acl`, conferir tabelas, migrations e registros de referência, e descartar o banco e o volume de teste ao terminar. A listagem do arquivo isoladamente não comprova que ele pode ser restaurado. Não usar `compose.production.yaml` nesse ensaio, pois seu nome de projeto é o da stack produtiva. Registrar data, revisão, arquivo, resultado e tempo de restauração. Os backups atuais ficam somente na VPS; uma cópia externa protegida e testes de restauração com essa cópia ainda são necessários para recuperação após perda do servidor.
+
+Em 23/09/2026, `scripts/restore-drill.sh` fez um ensaio real no PostgreSQL 17 de desenvolvimento local: gerou um dump customizado, restaurou em banco temporário, conferiu 44 tabelas e 8 migrations e removeu o banco de teste. A CI executará o mesmo ensaio com o PostgreSQL descartável após os testes de integração, antes de empacotar uma release. Este resultado não valida um dump da VPS nem a execução do cron; repetir com uma cópia do backup produtivo antes de depender dele para recuperação.
 
 ## Observabilidade e limites
 

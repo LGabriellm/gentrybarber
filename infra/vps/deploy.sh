@@ -1,58 +1,83 @@
 #!/usr/bin/env bash
-# Deploy script — executed on the VPS by GitHub Actions or manually.
-# Usage: ssh deploy@VPS 'bash /opt/barber-platform/infra/vps/deploy.sh'
+# Deploy a CI-approved image bundle already transferred to a versioned release directory.
+# Usage: bash /opt/barber-platform/releases/<release-id>/infra/vps/deploy.sh <sha> <release-id>
 set -euo pipefail
 
 APP_DIR="/opt/barber-platform"
-COMPOSE_FILE="compose.production.yaml"
+RELEASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+COMPOSE_FILE="$RELEASE_DIR/compose.production.yaml"
 LOG_FILE="/var/log/barber-deploy.log"
+APPROVED_SHA="${1:?Pass the CI-approved commit SHA}"
+RELEASE_ID="${2:?Pass the CI-approved release ID}"
 
-cd "$APP_DIR"
-
-echo "$(date -Iseconds) ── Deploy started ──" | tee -a "$LOG_FILE"
-
-# ── 1. Pull latest code ──────────────────────────────────────────
-echo "[1/7] Pulling latest code..."
-git config --global --add safe.directory "$APP_DIR"
-git fetch origin main 2>&1 | tee -a "$LOG_FILE"
-git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
-
-if [ ! -f .env.production ]; then
-  echo "==> Creating missing .env.production from template"
-  cp .env.production.example .env.production
-  DB_PASS=$(openssl rand -hex 16)
-  AUTH_SECRET=$(openssl rand -hex 32)
-  sed -i "s/CHANGE_ME_STRONG_PASSWORD_HERE/$DB_PASS/g" .env.production
-  sed -i "s/CHANGE_ME_AT_LEAST_32_CHARS/$AUTH_SECRET/g" .env.production
+if [[ ! "$APPROVED_SHA" =~ ^[a-f0-9]{40}$ ]] || [[ ! "$RELEASE_ID" =~ ^${APPROVED_SHA}-[0-9]+-[0-9]+$ ]]; then
+  echo "Invalid approved SHA or release ID" >&2
+  exit 1
 fi
+if [[ "$RELEASE_DIR" != "$APP_DIR/releases/$RELEASE_ID" ]]; then
+  echo "Release must run from its versioned directory" >&2
+  exit 1
+fi
+if [[ "$(cat "$RELEASE_DIR/REVISION")" != "$APPROVED_SHA" ]] || [[ "$(cat "$RELEASE_DIR/RELEASE_ID")" != "$RELEASE_ID" ]]; then
+  echo "Release metadata does not match the approved CI run" >&2
+  exit 1
+fi
+(cd "$RELEASE_DIR" && sha256sum --check --status SHA256SUMS)
+
+if [[ ! -f "$APP_DIR/.env.production" ]]; then
+  echo "Missing $APP_DIR/.env.production; provision the VPS before deployment" >&2
+  exit 1
+fi
+if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1 || ! command -v caddy >/dev/null; then
+  echo "Docker Compose and Caddy must be installed before deployment" >&2
+  exit 1
+fi
+if { [[ -e "$APP_DIR/current" ]] && [[ ! -L "$APP_DIR/current" ]]; } ||
+   { [[ -e "$APP_DIR/.current-next" ]] && [[ ! -L "$APP_DIR/.current-next" ]]; }; then
+  echo "The active-release paths must be symlinks or absent" >&2
+  exit 1
+fi
+
+export RELEASE_ID
+compose() {
+  docker compose --project-directory "$APP_DIR" --env-file "$APP_DIR/.env.production" -f "$COMPOSE_FILE" "$@"
+}
+
+cd "$RELEASE_DIR"
+
+echo "$(date -Iseconds) ── Deploy $RELEASE_ID ($APPROVED_SHA) started ──" | tee -a "$LOG_FILE"
+
+# ── 1. Load the exact images packaged by the approved CI run ─────
+echo "[1/7] Loading verified production images..."
+gzip -dc "$RELEASE_DIR/images.tar.gz" | docker load 2>&1 | tee -a "$LOG_FILE"
+for app in api worker web-public dashboard admin; do
+  expected_id="$(sed -n "s/^${app}=//p" "$RELEASE_DIR/IMAGE_IDS")"
+  if [[ ! "$expected_id" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+    echo "Missing or invalid image ID for $app" | tee -a "$LOG_FILE"
+    exit 1
+  fi
+  actual_id="$(docker image inspect "barber-platform-$app:$RELEASE_ID" --format '{{.Id}}')"
+  if [[ "$actual_id" != "$expected_id" ]]; then
+    echo "Loaded image for $app differs from the approved artifact" | tee -a "$LOG_FILE"
+    exit 1
+  fi
+done
+
+ENV_FILE="$APP_DIR/.env.production"
 
 # Strip any Windows carriage returns that might break regex matching
-sed -i 's/\r$//' .env.production
-
-# Ensure empty required variables have fallback values so Docker Compose doesn't crash
-sed -i "s/^SMTP_HOST=[[:space:]]*$/SMTP_HOST=localhost/g" .env.production
-sed -i "s/^SMTP_USER=[[:space:]]*$/SMTP_USER=user/g" .env.production
-sed -i "s/^SMTP_PASSWORD=[[:space:]]*$/SMTP_PASSWORD=pass/g" .env.production
-
-# Ensure production domain is configured (defaults to gentryhub.tech on VPS)
-if grep -q '^PLATFORM_DOMAIN=localhost' .env.production || grep -q '^PLATFORM_DOMAIN=[[:space:]]*$' .env.production || ! grep -q '^PLATFORM_DOMAIN=' .env.production; then
-  if grep -q '^PLATFORM_DOMAIN=' .env.production; then
-    sed -i "s/^PLATFORM_DOMAIN=.*$/PLATFORM_DOMAIN=gentryhub.tech/g" .env.production
-  else
-    echo "PLATFORM_DOMAIN=gentryhub.tech" >> .env.production
-  fi
-fi
+sed -i 's/\r$//' "$ENV_FILE"
 
 read_env() {
-  sed -n "s/^$1=//p" .env.production | tail -n 1 | tr -d '\r'
+  sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | tr -d '\r'
 }
 
 ensure_env_default() {
   local key="$1" default="$2"
-  if ! grep -q "^${key}=" .env.production; then
-    printf '%s=%s\n' "$key" "$default" >> .env.production
+  if ! grep -q "^${key}=" "$ENV_FILE"; then
+    printf '%s=%s\n' "$key" "$default" >> "$ENV_FILE"
   elif [[ -z "$(read_env "$key")" ]]; then
-    sed -i "s|^${key}=.*$|${key}=${default}|" .env.production
+    sed -i "s|^${key}=.*$|${key}=${default}|" "$ENV_FILE"
   fi
 }
 
@@ -76,6 +101,10 @@ if [[ "$PORT_SET" -ne 4 ]]; then
 fi
 
 PLATFORM_DOMAIN_VALUE="$(read_env PLATFORM_DOMAIN)"
+if [[ ! "$PLATFORM_DOMAIN_VALUE" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]; then
+  echo "Invalid PLATFORM_DOMAIN in .env.production" | tee -a "$LOG_FILE"
+  exit 1
+fi
 EXPECTED_AUTH_URL="https://api.$PLATFORM_DOMAIN_VALUE"
 EXPECTED_ORIGINS="https://dashboard.$PLATFORM_DOMAIN_VALUE,https://admin.$PLATFORM_DOMAIN_VALUE"
 if [[ "$(read_env BETTER_AUTH_URL)" != "$EXPECTED_AUTH_URL" ]]; then
@@ -87,26 +116,30 @@ if [[ "$(read_env TRUSTED_ORIGINS)" != "$EXPECTED_ORIGINS" ]]; then
   exit 1
 fi
 
-# ── 2. Build images ──────────────────────────────────────────────
-echo "[2/7] Building Docker images..."
-docker compose --env-file .env.production -f "$COMPOSE_FILE" build 2>&1 | tee -a "$LOG_FILE"
+# ── 2. Validate configuration without rebuilding images ─────────
+echo "[2/7] Validating production configuration..."
+compose config --quiet 2>&1 | tee -a "$LOG_FILE"
 
 # ── 3. Run migrations ────────────────────────────────────────────
 echo "[3/7] Running database migrations..."
-docker compose --env-file .env.production -f "$COMPOSE_FILE" run --rm migrate 2>&1 | tee -a "$LOG_FILE"
+compose run --rm migrate 2>&1 | tee -a "$LOG_FILE"
 
 # Host Caddy reaches loopback-published containers through the Docker gateway.
 # Trust that single gateway, never every private network or every source.
 TRUST_PROXY_CIDRS_VALUE="$(read_env TRUST_PROXY_CIDRS)"
 if [[ -z "$TRUST_PROXY_CIDRS_VALUE" ]]; then
-  POSTGRES_CONTAINER_ID="$(docker compose --env-file .env.production -f "$COMPOSE_FILE" ps -q postgres)"
+  POSTGRES_CONTAINER_ID="$(compose ps -q postgres)"
   DOCKER_GATEWAY="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{println .Gateway}}{{end}}' "$POSTGRES_CONTAINER_ID" | sed -n '/./{p;q;}')"
   if [[ -z "$DOCKER_GATEWAY" ]]; then
     echo "Could not discover the Docker gateway used by Caddy" | tee -a "$LOG_FILE"
     exit 1
   fi
   TRUST_PROXY_CIDRS_VALUE="$DOCKER_GATEWAY/32"
-  sed -i "s|^TRUST_PROXY_CIDRS=.*$|TRUST_PROXY_CIDRS=$TRUST_PROXY_CIDRS_VALUE|" .env.production
+  if grep -q '^TRUST_PROXY_CIDRS=' "$ENV_FILE"; then
+    sed -i "s|^TRUST_PROXY_CIDRS=.*$|TRUST_PROXY_CIDRS=$TRUST_PROXY_CIDRS_VALUE|" "$ENV_FILE"
+  else
+    printf 'TRUST_PROXY_CIDRS=%s\n' "$TRUST_PROXY_CIDRS_VALUE" >> "$ENV_FILE"
+  fi
 fi
 if [[ ! "$TRUST_PROXY_CIDRS_VALUE" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/32$ ]]; then
   echo "TRUST_PROXY_CIDRS must identify only the exact ingress gateway" | tee -a "$LOG_FILE"
@@ -115,14 +148,10 @@ fi
 
 # ── 4. Restart services ──────────────────────────────────────────
 echo "[4/7] Restarting services..."
-docker compose --env-file .env.production -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
+compose up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
 
 # ── 5. Configure ingress ─────────────────────────────────────────
 echo "[5/7] Configuring public ingress..."
-if [[ ! "$PLATFORM_DOMAIN_VALUE" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]; then
-  echo "Invalid PLATFORM_DOMAIN in .env.production" | tee -a "$LOG_FILE"
-  exit 1
-fi
 RENDERED_CADDY="$(mktemp)"
 trap 'rm -f "$RENDERED_CADDY"' EXIT
 sed \
@@ -181,15 +210,15 @@ done
 if [ "$FAILED" -eq 1 ]; then
   echo ""
   echo "⚠ Some health checks failed. Check logs:"
-  echo "  docker compose --env-file .env.production -f $COMPOSE_FILE logs --tail 50"
+  echo "  docker compose --env-file $ENV_FILE -f $COMPOSE_FILE logs --tail 50"
   echo "$(date -Iseconds) ── Deploy FAILED ──" | tee -a "$LOG_FILE"
   exit 1
 fi
 
-# ── Cleanup old images ───────────────────────────────────────────
-echo "Pruning unused Docker images..."
-docker image prune -f 2>&1 | tee -a "$LOG_FILE"
+# The cron backup reads the exact Compose file of the last healthy release.
+ln -sfn "releases/$RELEASE_ID" "$APP_DIR/.current-next"
+mv -Tf "$APP_DIR/.current-next" "$APP_DIR/current"
 
 echo ""
-echo "$(date -Iseconds) ── Deploy completed successfully ──" | tee -a "$LOG_FILE"
+echo "$(date -Iseconds) ── Deploy $RELEASE_ID completed successfully ──" | tee -a "$LOG_FILE"
 echo "All services healthy. 🚀"

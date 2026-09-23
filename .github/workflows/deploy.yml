@@ -2,6 +2,11 @@ name: Deploy to VPS
 
 on:
   workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful Foundation CI run ID from a push to main
+        required: true
+        type: string
   workflow_run:
     workflows: ['Foundation CI']
     types: [completed]
@@ -9,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: deploy-production
@@ -19,9 +25,63 @@ jobs:
     name: Deploy to production VPS
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
-      - name: Deploy via SSH
+      - name: Resolve and authorize approved CI run
+        id: approved
+        uses: actions/github-script@v7
+        env:
+          CI_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.ci_run_id || github.event.workflow_run.id }}
+        with:
+          script: |
+            const runId = Number(process.env.CI_RUN_ID);
+            if (!Number.isSafeInteger(runId) || runId <= 0) throw new Error('A valid Foundation CI run ID is required');
+            const { owner, repo } = context.repo;
+            const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
+            if (run.name !== 'Foundation CI' || run.path?.split('@')[0] !== '.github/workflows/ci.yml' ||
+                run.event !== 'push' || run.head_branch !== 'main' ||
+                run.head_repository?.id !== context.payload.repository?.id ||
+                run.status !== 'completed' || run.conclusion !== 'success' ||
+                !/^[a-f0-9]{40}$/.test(run.head_sha) ||
+                !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
+              throw new Error('The selected run is not a successful Foundation CI push on this repository main branch');
+            }
+            const releaseId = `${run.head_sha}-${run.id}-${run.run_attempt}`;
+            const artifactName = `production-release-${releaseId}`;
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+              { owner, repo, run_id: runId, per_page: 100 });
+            const matching = artifacts.filter(artifact => artifact.name === artifactName && !artifact.expired);
+            if (matching.length !== 1) throw new Error('The approved CI release artifact is missing or expired');
+            core.setOutput('sha', run.head_sha);
+            core.setOutput('release_id', releaseId);
+            core.setOutput('run_id', String(run.id));
+            core.setOutput('artifact_name', artifactName);
+
+      - name: Checkout verifier from the approved commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.approved.outputs.sha }}
+
+      - name: Set up Node.js for artifact verification
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download the exact CI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.approved.outputs.artifact_name }}
+          run-id: ${{ steps.approved.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release
+
+      - name: Verify revision, image IDs and checksums
+        env:
+          APPROVED_SHA: ${{ steps.approved.outputs.sha }}
+          RELEASE_ID: ${{ steps.approved.outputs.release_id }}
+        run: node scripts/verify-release-artifact.mjs release "$APPROVED_SHA" "$RELEASE_ID"
+
+      - name: Check VPS prerequisites
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -33,31 +93,56 @@ jobs:
           fingerprint: SHA256:3jznb3JdQinBPNtXDIMgOq+Y5tZgB3v6t3/hRp6Kyrg
           protocol: tcp4
           port: 22
+          command_timeout: 1m
+          script: |
+            set -euo pipefail
+            test -d /opt/barber-platform && test -w /opt/barber-platform
+            test -f /opt/barber-platform/.env.production
+            test -w /var/log/barber-deploy.log
+            command -v docker && docker compose version && docker info >/dev/null
+            command -v caddy
+            echo "VPS prerequisites are ready; setup must be completed separately as root."
+
+      - name: Transfer the verified release
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          fingerprint: SHA256:3jznb3JdQinBPNtXDIMgOq+Y5tZgB3v6t3/hRp6Kyrg
+          protocol: tcp4
+          port: 22
+          command_timeout: 40m
+          source: release/REVISION,release/RELEASE_ID,release/IMAGE_IDS,release/SHA256SUMS,release/images.tar.gz,release/config.tar.gz
+          target: /opt/barber-platform/releases/${{ steps.approved.outputs.release_id }}
+          strip_components: 1
+          overwrite: true
+
+      - name: Deploy the approved images via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          fingerprint: SHA256:3jznb3JdQinBPNtXDIMgOq+Y5tZgB3v6t3/hRp6Kyrg
+          protocol: tcp4
+          port: 22
           command_timeout: 40m
           script: |
             set -euo pipefail
-            
-            # Trust the directory to prevent dubious ownership error
-            git config --global --add safe.directory /opt/barber-platform
-            
-            # Initial Setup checks
-            if [ ! -d "/opt/barber-platform" ]; then
-              echo "==> First time deployment detected! Cloning repository..."
-              git clone https://github.com/LGabriellm/gentrybarber.git /opt/barber-platform
-            fi
-            
-            cd /opt/barber-platform
-            git fetch origin main
-            git reset --hard origin/main
-            
-            # Run setup only on first deploy (it's already done on this VPS)
-            if [ ! -f /opt/.barber-setup-done ]; then
-              bash infra/vps/setup-vps.sh || echo "⚠ Some setup steps failed, but continuing..."
-              touch /opt/.barber-setup-done
-            fi
-            
-            # Run normal deployment
-            bash infra/vps/deploy.sh
+            sha='${{ steps.approved.outputs.sha }}'
+            release_id='${{ steps.approved.outputs.release_id }}'
+            release_dir="/opt/barber-platform/releases/$release_id"
+            cd "$release_dir"
+            test "$(cat REVISION)" = "$sha"
+            test "$(cat RELEASE_ID)" = "$release_id"
+            sha256sum --check --status SHA256SUMS
+            expected_entries="$(printf '%s\n' compose.production.yaml infra/vps/deploy.sh infra/vps/backup.sh infra/vps/Caddyfile .env.production.example)"
+            test "$(tar -tzf config.tar.gz)" = "$expected_entries"
+            tar -xzf config.tar.gz
+            bash "$release_dir/infra/vps/deploy.sh" "$sha" "$release_id"
 
       - name: Verify deployment externally
         env:
@@ -82,4 +167,4 @@ jobs:
         if: failure()
         run: |
           echo "::error::Deployment to VPS failed! Check the deploy logs on the server."
-          echo "SSH into the VPS and run: docker compose --env-file .env.production -f compose.production.yaml logs --tail 100"
+          echo "Inspect /var/log/barber-deploy.log and the Compose logs for release ${{ steps.approved.outputs.release_id }} on the VPS"

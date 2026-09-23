@@ -87,6 +87,10 @@ jobs:
         run: pnpm test
       - name: PostgreSQL integration tests
         run: pnpm test:integration
+      - name: Rehearse backup restore in disposable PostgreSQL database
+        env:
+          POSTGRES_SERVICE_ID: ${{ job.services.postgres.id }}
+        run: bash scripts/restore-drill.sh "$POSTGRES_SERVICE_ID" platform_test
       - name: Build workspace
         run: pnpm build
       - name: Run compiled API against PostgreSQL
@@ -109,3 +113,62 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  package-release:
+    name: Package immutable production images
+    needs: verify
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout verified commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Node.js for release verification
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build images and release bundle
+        env:
+          APPROVED_SHA: ${{ github.sha }}
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+          release_id="${APPROVED_SHA}-${CI_RUN_ID}-${CI_ATTEMPT}"
+          mkdir -p release
+          printf '%s\n' "$APPROVED_SHA" > release/REVISION
+          printf '%s\n' "$release_id" > release/RELEASE_ID
+
+          docker build --target runtime --build-arg APP=api -t "barber-platform-api:$release_id" .
+          docker build --target runtime --build-arg APP=worker -t "barber-platform-worker:$release_id" .
+          for app in web-public dashboard admin; do
+            docker build --target frontend --build-arg "APP=$app" -t "barber-platform-$app:$release_id" .
+          done
+
+          : > release/IMAGE_IDS
+          for app in api worker web-public dashboard admin; do
+            image_id="$(docker image inspect "barber-platform-$app:$release_id" --format '{{.Id}}')"
+            printf '%s=%s\n' "$app" "$image_id" >> release/IMAGE_IDS
+          done
+          docker save \
+            "barber-platform-api:$release_id" \
+            "barber-platform-worker:$release_id" \
+            "barber-platform-web-public:$release_id" \
+            "barber-platform-dashboard:$release_id" \
+            "barber-platform-admin:$release_id" | gzip -6 > release/images.tar.gz
+          tar -czf release/config.tar.gz \
+            compose.production.yaml infra/vps/deploy.sh infra/vps/backup.sh infra/vps/Caddyfile .env.production.example
+          (cd release && sha256sum REVISION RELEASE_ID IMAGE_IDS images.tar.gz config.tar.gz > SHA256SUMS)
+          (cd release && sha256sum --check --status SHA256SUMS)
+          node scripts/verify-release-artifact.mjs release "$APPROVED_SHA" "$release_id"
+      - name: Upload immutable release
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

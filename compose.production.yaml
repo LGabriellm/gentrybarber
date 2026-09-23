@@ -1,5 +1,5 @@
-# Production stack. Requires .env.production alongside this file.
-# Deploy with: docker compose -f compose.production.yaml up -d --build
+# Production stack. The deploy passes /opt/barber-platform/.env.production explicitly.
+# Deploy only CI-built images loaded from the verified release artifact.
 name: barber-platform-prod
 
 x-backend-environment: &backend-environment
@@ -78,10 +78,8 @@ services:
 
   # ── Backend ─────────────────────────────────────────────────────
   migrate:
-    build:
-      context: .
-      target: runtime
-      args: { APP: api }
+    image: barber-platform-api:${RELEASE_ID:?Set RELEASE_ID from the verified release}
+    pull_policy: never
     init: true
     environment:
       <<: *backend-environment
@@ -93,10 +91,8 @@ services:
         condition: service_healthy
 
   api:
-    build:
-      context: .
-      target: runtime
-      args: { APP: api }
+    image: barber-platform-api:${RELEASE_ID:?Set RELEASE_ID from the verified release}
+    pull_policy: never
     init: true
     environment:
       <<: *backend-environment
@@ -123,10 +119,8 @@ services:
         condition: service_healthy
 
   worker:
-    build:
-      context: .
-      target: runtime
-      args: { APP: worker }
+    image: barber-platform-worker:${RELEASE_ID:?Set RELEASE_ID from the verified release}
+    pull_policy: never
     init: true
     environment: *backend-environment
     restart: unless-stopped
@@ -144,10 +138,8 @@ services:
   # ── Frontends ───────────────────────────────────────────────────
   web-public:
     <<: *frontend
-    build:
-      context: .
-      target: frontend
-      args: { APP: web-public }
+    image: barber-platform-web-public:${RELEASE_ID:?Set RELEASE_ID from the verified release}
+    pull_policy: never
     ports: ['127.0.0.1:${WEB_PUBLIC_HOST_PORT:-3000}:3000']
     depends_on:
       api:
@@ -155,10 +147,8 @@ services:
 
   dashboard:
     <<: *frontend
-    build:
-      context: .
-      target: frontend
-      args: { APP: dashboard }
+    image: barber-platform-dashboard:${RELEASE_ID:?Set RELEASE_ID from the verified release}
+    pull_policy: never
     ports: ['127.0.0.1:${DASHBOARD_HOST_PORT:-3001}:3000']
     depends_on:
       api:
@@ -166,10 +156,8 @@ services:
 
   admin:
     <<: *frontend
-    build:
-      context: .
-      target: frontend
-      args: { APP: admin }
+    image: barber-platform-admin:${RELEASE_ID:?Set RELEASE_ID from the verified release}
+    pull_policy: never
     ports: ['127.0.0.1:${ADMIN_HOST_PORT:-3002}:3000']
     depends_on:
       api:

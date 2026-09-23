@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # VPS initial setup — run once as root on a fresh Ubuntu 24.04 + Docker VPS.
-# Usage: ssh root@187.77.235.234 'bash -s' < infra/vps/setup-vps.sh
+# Usage: ssh root@<VPS_HOST> 'bash -s' < infra/vps/setup-vps.sh
 set -euo pipefail
+
+if [[ "$EUID" -ne 0 ]]; then
+  echo "Run setup-vps.sh as root before starting the deploy workflow" >&2
+  exit 1
+fi
 
 DEPLOY_USER="deploy"
 APP_DIR="/opt/barber-platform"
@@ -28,8 +33,13 @@ if ! id "$DEPLOY_USER" &>/dev/null; then
 else
   echo "  → User '$DEPLOY_USER' already exists, skipping."
 fi
-deluser "$DEPLOY_USER" sudo >/dev/null 2>&1 || true
+usermod --shell /bin/bash "$DEPLOY_USER"
+usermod -aG docker "$DEPLOY_USER"
+if id -nG "$DEPLOY_USER" | tr ' ' '\n' | grep -qx sudo; then
+  deluser "$DEPLOY_USER" sudo
+fi
 
+echo "[3/8] Configuring deploy permissions..."
 # Limit sudo to the four commands used to validate and activate the Caddyfile.
 # Docker group membership is still privileged and must be restricted to deploy operators.
 cat > /etc/sudoers.d/$DEPLOY_USER <<EOF
@@ -80,9 +90,8 @@ fi
 # ── 7. App directory ─────────────────────────────────────────────
 echo "[7/8] Creating application directory..."
 mkdir -p "$APP_DIR"
-# The directory may already contain a clone created by root (for example by
-# hPanel). Git needs the whole worktree, including .git/FETCH_HEAD, writable by
-# the dedicated deploy operator.
+# A previous installation may have root-owned files. The deploy operator must
+# be able to create versioned release directories and update the active link.
 chown -R "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR"
 touch /var/log/barber-deploy.log
 chown "$DEPLOY_USER:$DEPLOY_USER" /var/log/barber-deploy.log
@@ -107,8 +116,7 @@ echo "  Setup complete!"
 echo ""
 echo "  Next steps:"
 echo "  1. Add SSH key for '$DEPLOY_USER'"
-echo "  2. Copy Caddyfile to /etc/caddy/Caddyfile"
-echo "  3. Clone repo to $APP_DIR"
-echo "  4. Create .env.production from template"
-echo "  5. Run first deploy"
+echo "  2. Create $APP_DIR/.env.production with production values"
+echo "  3. Verify Docker Compose, Caddy and deploy log permissions"
+echo "  4. Deploy a successful Foundation CI release artifact"
 echo "══════════════════════════════════════════════════"
