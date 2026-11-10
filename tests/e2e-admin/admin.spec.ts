@@ -216,7 +216,9 @@ test('cadastro de barbearia com proprietário verificado e unidade persistidos',
   await professionalSection.getByRole('checkbox', { name: 'Corte administrativo' }).check();
   await professionalSection.getByRole('button', { name: 'Adicionar profissional' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Profissional cadastrado' })).toBeVisible();
+  await expect(professionalSection.getByRole('heading', { name: 'Profissional administrativo' })).toBeVisible();
   const scheduleSection = page.locator('#horarios');
+  await expect(scheduleSection.getByRole('option', { name: 'Somente Profissional administrativo' })).toBeAttached();
   await scheduleSection.getByRole('button', { name: 'Adicionar intervalo' }).click();
   const monday = scheduleSection.locator('.admin-hours-row').first();
   await monday.getByLabel('Dia').selectOption('1');
