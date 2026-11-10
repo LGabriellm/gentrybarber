@@ -10,8 +10,22 @@ describe('Transactional WhatsApp confirmations, customer reminders, and barber r
     const feature = await db.feature.upsert({ where: { key: 'whatsapp_automation' }, create: { key: 'whatsapp_automation', name: 'WhatsApp' }, update: {} });
     featureId = feature.id;
     await db.tenantFeatureOverride.create({ data: { tenantId: bookingTenant(), featureId, enabled: true, reason: 'Fictitious integration' } });
+
+    // Enable website feature and published site configuration for bookingTenant() so public booking endpoints pass authorization
+    const websiteFeature = await db.feature.upsert({ where: { key: 'website' }, create: { key: 'website', name: 'Website' }, update: {} });
+    await db.tenantFeatureOverride.create({ data: { tenantId: bookingTenant(), featureId: websiteFeature.id, enabled: true, reason: 'Public booking test' } });
+
+    const themeKey = `theme_wa_${bookingTenant()}`;
+    const theme = await db.theme.create({ data: { key: themeKey, name: 'WhatsApp Theme', kind: 'BESPOKE', ownerTenantId: bookingTenant(), active: true } });
+    const themeVersion = await db.themeVersion.create({ data: { themeId: theme.id, tenantId: bookingTenant(), version: 1, status: 'PUBLISHED', config: { tokens: {} } } });
+    await db.siteConfiguration.create({ data: { tenantId: bookingTenant(), title: 'WhatsApp Site', description: 'Test', published: true, themeId: theme.id, publishedThemeVersionId: themeVersion.id } });
   });
-  afterAll(cleanupBookingTests);
+  afterAll(async () => {
+    await db.siteConfiguration.deleteMany({ where: { tenantId: bookingTenant() } });
+    await db.themeVersion.deleteMany({ where: { tenantId: bookingTenant() } });
+    await db.theme.deleteMany({ where: { key: `theme_wa_${bookingTenant()}` } });
+    await cleanupBookingTests();
+  });
 
   async function fixture(withBarberPhone = false) {
     const f = await createBookingFixture();
