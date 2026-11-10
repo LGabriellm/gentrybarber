@@ -38,7 +38,7 @@ async function failureMessage(response: Response): Promise<string> {
 
 function fieldsFromEntry(entry: Entry) {
   if ('priceCents' in entry) return { name: entry.name, description: entry.description, durationMinutes: entry.durationMinutes, priceCents: entry.priceCents, active: entry.active };
-  return { name: entry.name, bio: entry.bio, active: entry.active, serviceIds: entry.serviceIds };
+  return { name: entry.name, phone: entry.phone, bio: entry.bio, active: entry.active, serviceIds: entry.serviceIds };
 }
 
 export function CatalogManager({ slug, resource, initialData }: { slug: string; resource: Resource; initialData: Catalog }) {
@@ -143,7 +143,7 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
       {items.length === 0 ? <div className="panel catalog-empty"><h3>{services ? 'Nenhum serviço cadastrado' : 'Nenhum profissional cadastrado'}{location ? ' nesta unidade' : ''}.</h3><p>{hasActiveLocation ? `Use “Novo ${singular}” para começar a organizar ${services ? 'seu catálogo' : 'sua equipe'}.` : 'Uma unidade ativa é necessária para começar.'}</p></div> : <div className="catalog-cards">{items.map(item => <article className="card catalog-card" key={item.id}>
         <div className="catalog-card-top"><span className="eyebrow">{locations.get(item.locationId)?.name ?? 'Unidade indisponível'}</span><span className={`catalog-status ${item.active ? '' : 'catalog-status-inactive'}`}>{item.active ? 'Ativo' : 'Inativo'}</span></div>
         <h3>{item.name}</h3>
-        {'priceCents' in item ? <><p className="catalog-card-detail">{formatPrice(item.priceCents)} <span>· {item.durationMinutes} minutos</span></p><p className="catalog-description">{item.description || 'Sem descrição.'}</p></> : <><p className="catalog-description">{item.bio || 'Sem apresentação.'}</p><div className="catalog-tags" aria-label={`Serviços de ${item.name}`}>{item.serviceIds.length ? item.serviceIds.map(id => { const service = serviceOptions.find(option => option.id === id); return <span key={id}>{service?.name ?? 'Serviço indisponível'}{service && !service.active ? ' (inativo)' : ''}</span>; }) : <span>Nenhum serviço vinculado</span>}</div></>}
+        {'priceCents' in item ? <><p className="catalog-card-detail">{formatPrice(item.priceCents)} <span>· {item.durationMinutes} minutos</span></p><p className="catalog-description">{item.description || 'Sem descrição.'}</p></> : <>{item.phone && <p className="catalog-card-detail">WhatsApp (avisos): {item.phone}</p>}<p className="catalog-description">{item.bio || 'Sem apresentação.'}</p><div className="catalog-tags" aria-label={`Serviços de ${item.name}`}>{item.serviceIds.length ? item.serviceIds.map(id => { const service = serviceOptions.find(option => option.id === id); return <span key={id}>{service?.name ?? 'Serviço indisponível'}{service && !service.active ? ' (inativo)' : ''}</span>; }) : <span>Nenhum serviço vinculado</span>}</div></>}
         {!locations.get(item.locationId)?.active && <p className="catalog-note">Unidade inativa: este cadastro não aparece no site.</p>}
         <div className="catalog-card-actions"><button type="button" className="button secondary" aria-label={`Editar ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => openEditor(item)}>Editar</button><button type="button" className="catalog-text-button" aria-label={`${item.active ? 'Desativar' : 'Reativar'} ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => save({ ...fieldsFromEntry(item), active: !item.active, expectedVersion: item.version }, item)}>{item.active ? 'Desativar' : 'Reativar'}</button></div>
       </article>)}</div>}
@@ -181,8 +181,12 @@ function CatalogEditor({ resource, entry, locations, services, defaultLocation, 
       if (!/^\d+$/.test(durationText) || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1_440) { onInvalid('Informe uma duração inteira entre 1 e 1.440 minutos.'); return; }
       await onSave({ name, description: detail || null, priceCents, durationMinutes, active, ...identity }, entry);
     } else {
+      const rawPhone = String(form.get('phone') || '').trim();
+      const compactPhone = rawPhone.replace(/[\s().-]/g, '');
+      const phone = !compactPhone ? null : /^\d{10,11}$/.test(compactPhone) ? `+55${compactPhone}` : compactPhone;
+      if (phone !== null && !/^\+[1-9]\d{7,14}$/.test(phone)) { onInvalid('Informe o WhatsApp do profissional com DDD (ou + e código do país) ou deixe em branco.'); return; }
       if (selectedServices.length > 100 || selectedServices.some(id => !availableServices.some(item => item.id === id))) { onInvalid('Selecione até 100 serviços desta unidade. Recarregue os dados se as opções mudaram.'); return; }
-      await onSave({ name, bio: detail || null, active, serviceIds: selectedServices, ...identity }, entry);
+      await onSave({ name, phone, bio: detail || null, active, serviceIds: selectedServices, ...identity }, entry);
     }
   }
 
@@ -191,6 +195,7 @@ function CatalogEditor({ resource, entry, locations, services, defaultLocation, 
       <div className="catalog-form-grid">
         <label className="catalog-field" htmlFor={`${idPrefix}-name`}>{isService ? 'Nome do serviço' : 'Nome do profissional'}<input id={`${idPrefix}-name`} name="name" defaultValue={entry?.name || ''} required maxLength={120} autoComplete="off" /></label>
         {(entry ? locations.length === 1 : activeLocations.length === 1) ? <p className="catalog-note">Local de atendimento: <strong>{locations.find(item => item.id === locationId)?.name}</strong></p> : <label className="catalog-field" htmlFor={`${idPrefix}-location`}>Unidade{entry ? <><input id={`${idPrefix}-location`} value={locations.find(item => item.id === locationId)?.name || 'Unidade indisponível'} readOnly /><small>A unidade de um cadastro existente não pode ser alterada.</small></> : <select id={`${idPrefix}-location`} value={locationId} required onChange={event => { setLocationId(event.target.value); setSelectedServices([]); }}><option value="" disabled>Selecione a unidade</option>{activeLocations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</label>}
+        {!isService && <label className="catalog-field" htmlFor={`${idPrefix}-phone`}>WhatsApp do profissional (opcional)<input id={`${idPrefix}-phone`} name="phone" type="tel" maxLength={30} autoComplete="tel" defaultValue={entry && 'phone' in entry ? entry.phone || '' : ''} placeholder="Ex.: (11) 99999-9999" aria-describedby={`${idPrefix}-phone-hint`} /><small id={`${idPrefix}-phone-hint`}>Para receber o lembrete do próximo cliente 15 min antes do corte. Informe o DDD.</small></label>}
         {isService && <><label className="catalog-field" htmlFor={`${idPrefix}-price`}>Preço (R$)<input id={`${idPrefix}-price`} name="price" inputMode="decimal" required defaultValue={entry && 'priceCents' in entry ? formatPriceInput(entry.priceCents) : ''} placeholder="Ex.: 45,90" aria-describedby={`${idPrefix}-price-hint`} /><small id={`${idPrefix}-price-hint`}>Até duas casas decimais, sem separador de milhar.</small></label><label className="catalog-field" htmlFor={`${idPrefix}-duration`}>Duração (minutos)<input id={`${idPrefix}-duration`} name="duration" type="number" inputMode="numeric" min={1} max={1440} step={1} required defaultValue={entry && 'durationMinutes' in entry ? entry.durationMinutes : ''} /></label></>}
       </div>
       <label className="catalog-field" htmlFor={`${idPrefix}-detail`}>{isService ? 'Descrição' : 'Bio'}<textarea id={`${idPrefix}-detail`} name="detail" rows={4} maxLength={2000} defaultValue={entry ? 'description' in entry ? entry.description || '' : entry.bio || '' : ''} /><small>Opcional. Até 2.000 caracteres.</small></label>

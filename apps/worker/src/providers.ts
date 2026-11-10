@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SmtpEmailProvider, ConsoleEmailProvider } from '@platform/notifications';
+import { SmtpEmailProvider, ConsoleEmailProvider, ZernioWhatsAppProvider, ConsoleWhatsAppProvider, whatsappRuntime } from '@platform/notifications';
 
 export function notificationProviders(input: Record<string, string | undefined> = process.env) {
   const env = z.object({
@@ -10,11 +10,12 @@ export function notificationProviders(input: Record<string, string | undefined> 
   }).parse(input);
   if (env.NOTIFICATIONS_MODE === 'console') {
     if (env.NODE_ENV === 'production') throw new Error('Console notifications are forbidden in production.');
-    return { email: new ConsoleEmailProvider() };
+    return { email: new ConsoleEmailProvider(), whatsapp: new ConsoleWhatsAppProvider() };
   }
   if (!env.SMTP_HOST || !env.SMTP_FROM) throw new Error('Configure SMTP_HOST and SMTP_FROM before starting the notification worker.');
-  
+  const runtime = whatsappRuntime(input);
   return {
     email: new SmtpEmailProvider({ host: env.SMTP_HOST, port: env.SMTP_PORT, from: env.SMTP_FROM, user: env.SMTP_USER, password: env.SMTP_PASSWORD }),
+    whatsapp: new ZernioWhatsAppProvider(runtime),
   };
 }

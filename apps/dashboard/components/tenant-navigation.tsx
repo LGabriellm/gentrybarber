@@ -10,6 +10,7 @@ export function TenantNavigation({ context, features }: { context: ContextView; 
   const agenda = booking && permission('appointments.manage_all') && permission('appointments.read');
   const items = [
     { path: 'agenda', label: 'Agenda', allowed: agenda },
+    { path: 'whatsapp', label: 'WhatsApp', allowed: agenda && enabled('whatsapp_automation') },
     { path: 'customers', label: 'Clientes', allowed: enabled('customers') && permission('customers.read') },
     { path: 'horarios', label: 'Horários e bloqueios', allowed: agenda && permission('schedules.manage') },
     { path: 'services', label: 'Serviços', allowed: booking && permission('services.manage') },

@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from '@platform/database';
 import { requirePermission } from '@platform/tenancy';
 import { addCalendarDays, assertWeeklyWindows, availableSlots, calendarDay, canTransition, intervalFits, isCalendarDate, localDate, occupyingStatuses, workingIntervals, type CalendarDay, type TimeRange } from '@platform/booking';
 import { AccessError, type AppointmentDay, type AppointmentView, type AvailabilityView, type BookingOptions, type CustomerView, type PermissionKey, type ScheduleView, type TenantContext, type TimeOffView } from '@platform/types';
+import { enqueueWhatsAppNotifications } from '@platform/notifications';
 import { z } from 'zod';
 
 const minuteMs = 60_000;
@@ -396,9 +397,7 @@ export class BookingService {
       await tx.appointmentService.createMany({ data: offering.services.map(service => ({ ...service, tenantId, locationId: fields.locationId, appointmentId: created.id })) });
       await tx.appointmentEvent.create({ data: { tenantId, locationId: fields.locationId, appointmentId: created.id, actorUserId: context.userId, fromStatus: null, toStatus: 'CONFIRMED' } });
       await audit(tx, context, 'appointment.created', 'Appointment', created.id);
-      
-
-      
+      await enqueueWhatsAppNotifications(tx, tenantId, created.id, this.now());
       return appointmentView(await findAppointment(tx, tenantId, created.id));
     });
   }
@@ -426,6 +425,7 @@ export class BookingService {
       if (result.count !== 1) throw new AccessError('CONFLICT');
       await tx.appointmentEvent.create({ data: { tenantId, locationId: current.locationId, appointmentId: resourceId, actorUserId: context.userId, fromStatus: current.status, toStatus: current.status, reason: 'Reagendamento' } });
       await audit(tx, context, 'appointment.rescheduled', 'Appointment', resourceId);
+      await enqueueWhatsAppNotifications(tx, tenantId, resourceId, this.now());
       return appointmentView(await findAppointment(tx, tenantId, resourceId));
     });
   }
@@ -498,8 +498,7 @@ export class BookingService {
       await tx.appointmentEvent.create({ data: { tenantId, locationId: fields.locationId, appointmentId: created.id, actorUserId: null, fromStatus: null, toStatus: 'CONFIRMED' } });
       
       await audit(tx, { tenantId, actorUserId: null }, 'appointment.created', 'Appointment', created.id);
-      
-      
+      await enqueueWhatsAppNotifications(tx, tenantId, created.id, this.now(), { customerOptIn: fields.customer.whatsappOptIn });
       return publicReceipt(await findAppointment(tx, tenantId, created.id));
     });
   }

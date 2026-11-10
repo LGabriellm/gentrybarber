@@ -20,6 +20,7 @@ export interface CatalogProfessional {
   locationId: string;
   userId: string | null;
   name: string;
+  phone: string | null;
   bio: string | null;
   active: boolean;
   serviceIds: string[];
@@ -47,6 +48,7 @@ export interface ServiceFields {
 
 export interface ProfessionalFields {
   name: string;
+  phone?: string | null;
   bio: string | null;
   active: boolean;
   serviceIds: string[];

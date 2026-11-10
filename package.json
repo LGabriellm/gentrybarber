@@ -34,7 +34,8 @@
     "test:frontends": "node scripts/smoke-frontends.mjs",
     "db:migrate:test": "node --env-file-if-exists=.env scripts/migrate-test.mjs",
     "test:e2e:admin": "node --import ./scripts/load-env.mjs node_modules/@playwright/test/cli.js test --config playwright.admin.config.ts",
-    "site:pack": "node --import tsx scripts/pack-site.ts"
+    "site:pack": "node --import tsx scripts/pack-site.ts",
+    "whatsapp:verify-zernio": "node --env-file-if-exists=.env --import tsx scripts/verify-zernio-whatsapp.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

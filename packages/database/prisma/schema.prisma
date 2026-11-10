@@ -125,6 +125,9 @@ model Tenant {
   email                 String?
   phone                 String?
   whatsapp              String?
+  zernioProfileId       String?                 @map("zernio_profile_id")
+  zernioAccountId       String?                 @map("zernio_account_id")
+  zernioPhone           String?                 @map("zernio_phone")
   createdAt             DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
   plan                  Plan                    @relation(fields: [planId], references: [id], onDelete: Restrict)
@@ -644,6 +647,7 @@ model Professional {
   locationId          String                 @map("location_id")
   userId              String?                @map("user_id")
   name                String
+  phone               String?
   bio                 String?
   photoUrl            String?                @map("photo_url")
   active              Boolean                @default(true)

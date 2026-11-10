@@ -5,7 +5,7 @@ import type { FormEvent } from 'react';
 import type { CustomerView } from '@platform/types';
 import './catalog.css'; // Reusing catalog styles for the list
 
-type CustomerInput = { name: string; phone: string; email?: string | null; notes?: string | null; expectedVersion?: number };
+type CustomerInput = { name: string; phone: string; email?: string | null; notes?: string | null; whatsappOptIn?: boolean; expectedVersion?: number };
 type Feedback = { text: string; error: boolean; conflict?: boolean; signIn?: boolean } | null;
 
 const failureMessages: Record<number, string> = {
@@ -118,6 +118,7 @@ export function CustomerManager({ slug, initialData, canUpdate }: { slug: string
         <div className="catalog-card-top"><span className="eyebrow">{item.phone}</span></div>
         <h3>{item.name}</h3>
         {item.email && <p className="catalog-card-detail">{item.email}</p>}
+        <p className="catalog-card-detail">{item.whatsappOptInAt ? 'WhatsApp autorizado (confirmação e lembrete)' : 'WhatsApp sem autorização registrada'}</p>
         {item.notes ? <p className="catalog-description"><strong>Anotações:</strong> {item.notes}</p> : <p className="catalog-description" style={{ color: 'var(--color-muted)' }}>Sem anotações.</p>}
         
         {canUpdate && <div className="catalog-card-actions"><button type="button" className="button secondary" aria-label={`Editar ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => openEditor(item)}>Editar</button></div>}
@@ -138,11 +139,12 @@ function CustomerEditor({ entry, disabled, onInvalid, onSave }: { entry?: Custom
     const phone = /^\d{10,11}$/.test(compactPhone) ? `+55${compactPhone}` : compactPhone;
     const email = String(form.get('email') || '').trim();
     const notes = String(form.get('notes') || '').trim();
+    const whatsappOptIn = form.get('whatsappOptIn') === 'on';
     
     if (!name || name.length > 120) { onInvalid('Informe um nome com até 120 caracteres.'); return; }
     if (!/^\+[1-9]\d{7,14}$/.test(phone)) { onInvalid('Informe o telefone com DDD ou use + e o código do país para números internacionais.'); return; }
     
-    await onSave({ name, phone, email: email || null, notes: notes || null, expectedVersion: entry?.version }, entry);
+    await onSave({ name, phone, email: email || null, notes: notes || null, whatsappOptIn, expectedVersion: entry?.version }, entry);
   }
 
   return <form className="catalog-form" onSubmit={submit}>
@@ -153,6 +155,7 @@ function CustomerEditor({ entry, disabled, onInvalid, onSave }: { entry?: Custom
         <label className="catalog-field">E-mail (opcional)<input name="email" type="email" defaultValue={entry?.email || ''} maxLength={255} autoComplete="off" /></label>
       </div>
       <label className="catalog-field">Anotações internas<textarea name="notes" rows={4} maxLength={2000} defaultValue={entry?.notes || ''} placeholder="Ex: Cliente VIP, prefere corte com tesoura..." /><small>Visível apenas para a equipe da barbearia.</small></label>
+      <label className="catalog-checkbox"><input type="checkbox" name="whatsappOptIn" defaultChecked={Boolean(entry?.whatsappOptInAt)} /> O cliente autorizou receber confirmações e lembretes de agendamento por WhatsApp neste celular.</label>
       <button className="button" type="submit">{disabled ? 'Aguarde…' : `Salvar Cliente`}</button>
     </fieldset>
   </form>;

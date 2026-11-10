@@ -51,6 +51,12 @@ describe('operational proxy boundary', () => {
     expect(String(url)).toBe('http://127.0.0.1:4000/v1/tenants/imperial/schedule');
     expect(Object.fromEntries(init.headers)).toEqual({ cookie: 'session=fixture', origin, 'content-type': 'application/json' });
     expect(init).toMatchObject({ method: 'PUT', redirect: 'manual', cache: 'no-store' });
+
+    for (const action of ['connect', 'sync', 'disconnect']) {
+      fetchMock.mockResolvedValueOnce(Response.json({ connected: true }, { status: 200 }));
+      const waResponse = await proxyOperation(request(`whatsapp/${action}`, 'POST'), { slug: 'imperial', path: ['whatsapp', action] });
+      expect(waResponse.status).toBe(200);
+    }
   });
 
   it('does not follow redirects or expose non-JSON upstream responses', async () => {

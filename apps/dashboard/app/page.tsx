@@ -30,6 +30,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const booking = enabled('booking');
   const agenda = booking && permitted('appointments.manage_all') && permitted('appointments.read');
   const customers = enabled('customers') && permitted('customers.read');
+  const whatsapp = agenda && enabled('whatsapp_automation');
   const schedules = agenda && permitted('schedules.manage');
   const services = booking && permitted('services.manage');
   const professionals = booking && permitted('professionals.manage');
@@ -54,6 +55,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     ...(services ? [{ href: href + '/services', title: 'Serviços e preços', description: 'Defina o que você oferece, quanto custa e quanto tempo cada serviço leva.', mark: 'S' }] : []),
     ...(professionals ? [{ href: href + '/professionals', title: solo ? 'Cadastro do profissional' : 'Profissionais', description: solo ? 'Atualize os dados de quem atende e os serviços que realiza. Adicione profissionais quando precisar.' : 'Cadastre quem atende e associe os serviços de cada profissional.', mark: 'P' }] : []),
     ...(locations ? [{ href: href + '/locations', title: oneLocation || !enabled('multi_location') ? 'Dados da barbearia' : 'Barbearias e unidades', description: oneLocation || !enabled('multi_location') ? 'Organize nome, endereço, contato e local de atendimento.' : 'Gerencie os endereços e os dados de cada unidade.', mark: 'B' }] : []),
+    ...(whatsapp ? [{ href: href + '/whatsapp', title: 'Mensagens de WhatsApp', description: 'Acompanhe confirmações enviadas, lembretes ao cliente e avisos ao barbeiro.', mark: 'W' }] : []),
   ];
   return <div className="shell dashboard-home dashboard-workspace">
     <header className="topbar"><a className="brand" href="/"><span className="brand-mark">{name[0]}</span>{name}</a><SignOutButton /></header>

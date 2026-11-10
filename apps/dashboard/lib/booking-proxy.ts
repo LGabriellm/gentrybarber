@@ -18,6 +18,7 @@ function route(path: string[], method: string): Record<string, number> | null {
     if (resource === 'appointments') return method === 'GET' ? { locationId: 128, date: 10 } : method === 'POST' ? {} : null;
   }
   if (!id || !identifier.test(id)) return null;
+  if (path.length === 2 && resource === 'whatsapp' && (id === 'connect' || id === 'sync' || id === 'disconnect') && method === 'POST') return {};
   if (path.length === 3 && resource === 'whatsapp' && action === 'retry' && method === 'POST') return {};
   if (path.length === 2 && ((resource === 'time-offs' && method === 'DELETE') || (resource === 'customers' && method === 'PATCH'))) return {};
   if (path.length === 3 && resource === 'appointments' && (action === 'status' || action === 'reschedule') && method === 'POST') return {};

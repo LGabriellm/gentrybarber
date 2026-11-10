@@ -14,8 +14,10 @@ const serviceFields = {
   priceCents: z.number().int().min(0).max(100_000_000),
   active: z.boolean(),
 };
+const phoneSchema = z.string().regex(/^\+[1-9]\d{7,14}$/).nullable();
 const professionalFields = {
   name: nameSchema,
+  phone: phoneSchema.optional(),
   bio: textSchema,
   active: z.boolean(),
   serviceIds: z.array(idSchema).max(100).refine(ids => new Set(ids).size === ids.length, 'Service ids must be distinct'),
@@ -32,7 +34,7 @@ const serviceSelect = {
   durationMinutes: true, priceCents: true, active: true, version: true,
 } as const satisfies Prisma.ServiceSelect;
 const professionalSelect = {
-  id: true, locationId: true, userId: true, name: true, bio: true, active: true, version: true,
+  id: true, locationId: true, userId: true, name: true, phone: true, bio: true, active: true, version: true,
 } as const satisfies Prisma.ProfessionalSelect;
 const orderBy = [{ name: 'asc' }, { id: 'asc' }] as const;
 
@@ -129,7 +131,7 @@ export class CatalogOperations {
       await requireActiveLocation(tx, tenantId, fields.locationId);
       await requireServices(tx, tenantId, fields.locationId, serviceIds);
       if (fields.userId && !await tx.membership.findFirst({ where: { tenantId, userId: fields.userId, status: 'ACTIVE' }, select: { id: true } })) throw new AccessError('NOT_FOUND');
-      const item = await tx.professional.create({ data: { ...fields, tenantId }, select: professionalSelect });
+      const item = await tx.professional.create({ data: { ...fields, phone: fields.phone ?? null, tenantId }, select: professionalSelect });
       if (serviceIds.length) await tx.professionalService.createMany({
         data: serviceIds.map(serviceId => ({ tenantId, locationId: item.locationId, professionalId: item.id, serviceId })),
       });

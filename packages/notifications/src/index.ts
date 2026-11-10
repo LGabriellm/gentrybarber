@@ -45,3 +45,6 @@ export class ConsoleEmailProvider implements NotificationProvider {
   }
   close(): void {}
 }
+
+export * from './whatsapp';
+export * from './whatsapp-outbox';
