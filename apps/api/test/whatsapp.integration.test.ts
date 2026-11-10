@@ -118,12 +118,15 @@ describe('Transactional WhatsApp confirmations, customer reminders, and barber r
       { session: null },
     );
     expect(response.statusCode, response.body).toBe(201);
-    const createdJobs = await jobs(response.json().id);
+    const appointmentId = response.json().id;
+    const createdJobs = await jobs(appointmentId);
     expect(createdJobs.map(j => j.templateKey)).toEqual([
       'booking.confirmation',
       'booking.customer_reminder',
       'booking.barber_reminder',
     ]);
+    await db.notification.deleteMany({ where: { tenantId: f.tenantId, appointmentId } });
+    await db.appointment.deleteMany({ where: { tenantId: f.tenantId, id: appointmentId } });
   });
 
   it('does not queue without consent or entitlement', async () => {
