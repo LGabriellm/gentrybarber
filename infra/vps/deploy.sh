@@ -219,6 +219,12 @@ fi
 ln -sfn "releases/$RELEASE_ID" "$APP_DIR/.current-next"
 mv -Tf "$APP_DIR/.current-next" "$APP_DIR/current"
 
+if grep -q '^RELEASE_ID=' "$ENV_FILE"; then
+  sed -i "s|^RELEASE_ID=.*$|RELEASE_ID=$RELEASE_ID|" "$ENV_FILE"
+else
+  printf 'RELEASE_ID=%s\n' "$RELEASE_ID" >> "$ENV_FILE"
+fi
+
 echo ""
 echo "$(date -Iseconds) ── Deploy $RELEASE_ID completed successfully ──" | tee -a "$LOG_FILE"
 echo "All services healthy. 🚀"
