@@ -12,6 +12,13 @@ x-backend-environment: &backend-environment
   SMTP_PASSWORD: ''
   SMTP_FROM: ${SMTP_FROM:-Platform <noreply@localhost>}
   S3_ENDPOINT: http://minio:9000
+  ZERNIO_API_KEY: ${ZERNIO_API_KEY:-}
+  ZERNIO_ACCOUNT_ID: ${ZERNIO_ACCOUNT_ID:-}
+  ZERNIO_TEMPLATE_LANGUAGE: ${ZERNIO_TEMPLATE_LANGUAGE:-pt_BR}
+  ZERNIO_CONFIRMATION_TEMPLATE: ${ZERNIO_CONFIRMATION_TEMPLATE:-booking_confirmation}
+  ZERNIO_CUSTOMER_REMINDER_TEMPLATE: ${ZERNIO_CUSTOMER_REMINDER_TEMPLATE:-booking_customer_reminder}
+  ZERNIO_BARBER_REMINDER_TEMPLATE: ${ZERNIO_BARBER_REMINDER_TEMPLATE:-booking_barber_reminder}
+  WHATSAPP_ACCOUNTS_JSON: ${WHATSAPP_ACCOUNTS_JSON:-}
 x-frontend: &frontend
   init: true
   restart: unless-stopped

@@ -35,6 +35,7 @@
     "db:migrate:test": "node --env-file-if-exists=.env scripts/migrate-test.mjs",
     "test:e2e:admin": "node --import ./scripts/load-env.mjs node_modules/@playwright/test/cli.js test --config playwright.admin.config.ts",
     "site:pack": "node --import tsx scripts/pack-site.ts",
+    "whatsapp:enable": "node --env-file-if-exists=.env --import tsx scripts/enable-whatsapp.ts",
     "whatsapp:verify-zernio": "node --env-file-if-exists=.env --import tsx scripts/verify-zernio-whatsapp.ts"
   },
   "devDependencies": {

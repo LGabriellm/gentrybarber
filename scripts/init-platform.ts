@@ -11,13 +11,13 @@ const features = [
 
 const plans = [
   { key: "start", name: "Start", monthlyPriceCents: 9900, setupFeeCents: 19900, customDesignFeeCents: 0,
-    featureKeys: ["website", "booking", "customers"] },
+    featureKeys: ["website", "booking", "customers", "whatsapp_automation"] },
   { key: "pro", name: "Pro", monthlyPriceCents: 19900, setupFeeCents: 29900, customDesignFeeCents: 0,
-    featureKeys: ["website", "booking", "customers", "advanced_site_builder", "analytics"] },
+    featureKeys: ["website", "booking", "customers", "advanced_site_builder", "analytics", "whatsapp_automation"] },
   { key: "premium", name: "Premium", monthlyPriceCents: 39900, setupFeeCents: 49900, customDesignFeeCents: 199900,
-    featureKeys: ["website", "booking", "customers", "advanced_site_builder", "analytics", "custom_domain", "custom_design", "custom_pages", "custom_css", "premium_animations", "white_label"] },
+    featureKeys: ["website", "booking", "customers", "advanced_site_builder", "analytics", "custom_domain", "custom_design", "custom_pages", "custom_css", "premium_animations", "white_label", "whatsapp_automation"] },
   { key: "network", name: "Network", monthlyPriceCents: 79900, setupFeeCents: 99900, customDesignFeeCents: 299900,
-    featureKeys: ["website", "booking", "customers", "advanced_site_builder", "analytics", "custom_domain", "custom_design", "custom_pages", "custom_css", "premium_animations", "white_label", "multi_location"] },
+    featureKeys: ["website", "booking", "customers", "advanced_site_builder", "analytics", "custom_domain", "custom_design", "custom_pages", "custom_css", "premium_animations", "white_label", "multi_location", "whatsapp_automation"] },
 ];
 
 const permissionKeys = [
@@ -49,7 +49,7 @@ async function setup() {
         await tx.planFeature.upsert({
           where: { planId_featureId: { planId: savedPlan.id, featureId: featureIds.get(key)! } },
           create: { planId: savedPlan.id, featureId: featureIds.get(key)!, enabled: featureKeys.includes(key), limit: key === "multi_location" && featureKeys.includes(key) ? 10 : null },
-          update: {},
+          update: { enabled: featureKeys.includes(key), limit: key === "multi_location" && featureKeys.includes(key) ? 10 : null },
         });
       }
     }

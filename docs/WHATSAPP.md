@@ -67,17 +67,26 @@ Na página **Mensagens de WhatsApp** (`/tenants/:slug/whatsapp`), cada barbearia
 
 ## Comandos de Provisionamento e Teste Rápido (Zernio)
 
-1. **Descobrir o `ZERNIO_ACCOUNT_ID` da sua conta de WhatsApp conectada na Zernio:**
+1. **Habilitar o recurso `whatsapp_automation` nos planos e barbearias (no banco da plataforma):**
+   ```bash
+   # Habilita em todos os planos padrão da plataforma
+   pnpm whatsapp:enable
+
+   # Habilita também um override específico para uma barbearia
+   pnpm whatsapp:enable gentry
+   ```
+
+2. **Descobrir o `ZERNIO_ACCOUNT_ID` da sua conta de WhatsApp conectada na Zernio:**
    ```bash
    pnpm whatsapp:verify-zernio --list-accounts <SUA_ZERNIO_API_KEY>
    ```
 
-2. **Criar automaticamente os 3 templates de Utilidade na Zernio (`POST /v1/whatsapp/templates`):**
+3. **Criar automaticamente os 3 templates de Utilidade na Zernio (`POST /v1/whatsapp/templates`):**
    ```bash
    pnpm whatsapp:verify-zernio --provision-templates
    ```
 
-3. **Disparar uma mensagem de confirmação de teste (`POST /v1/inbox/conversations`):**
+4. **Disparar uma mensagem de confirmação de teste (`POST /v1/inbox/conversations`):**
    ```bash
    pnpm whatsapp:verify-zernio +5511999999999
    ```

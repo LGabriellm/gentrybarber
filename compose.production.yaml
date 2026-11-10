@@ -24,6 +24,13 @@ x-backend-environment: &backend-environment
   # deploy.sh discovers the exact Docker gateway /32 before starting the API.
   TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
   NOTIFICATIONS_MODE: live
+  ZERNIO_API_KEY: ${ZERNIO_API_KEY:-}
+  ZERNIO_ACCOUNT_ID: ${ZERNIO_ACCOUNT_ID:-}
+  ZERNIO_TEMPLATE_LANGUAGE: ${ZERNIO_TEMPLATE_LANGUAGE:-pt_BR}
+  ZERNIO_CONFIRMATION_TEMPLATE: ${ZERNIO_CONFIRMATION_TEMPLATE:-booking_confirmation}
+  ZERNIO_CUSTOMER_REMINDER_TEMPLATE: ${ZERNIO_CUSTOMER_REMINDER_TEMPLATE:-booking_customer_reminder}
+  ZERNIO_BARBER_REMINDER_TEMPLATE: ${ZERNIO_BARBER_REMINDER_TEMPLATE:-booking_barber_reminder}
+  WHATSAPP_ACCOUNTS_JSON: ${WHATSAPP_ACCOUNTS_JSON:-}
 
 x-frontend: &frontend
   init: true
