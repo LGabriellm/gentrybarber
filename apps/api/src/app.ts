@@ -60,7 +60,7 @@ class BoundaryErrorFilter implements ExceptionFilter {
       INVALID_INPUT: 400,
       CONFLICT: 409,
     }[code];
-    reply.status(status).send({ error: code, details });
+    reply.status(status).send({ error: code, ...(error.message && error.message !== code ? { message: error.message } : {}), details });
   }
 }
 @ApiTags("Foundation")
@@ -281,6 +281,11 @@ class FoundationController {
   adminUpdateService(@Req() request: FastifyRequest, @Param('id') id: string, @Param('resourceId') resourceId: string, @Body() body: unknown) {
     return this.services.adminCatalog(request, id, 'services', 'update', body, resourceId);
   }
+  @Delete('/v1/admin/tenants/:id/services/:resourceId')
+  @ApiCookieAuth()
+  adminDeleteService(@Req() request: FastifyRequest, @Param('id') id: string, @Param('resourceId') resourceId: string) {
+    return this.services.adminCatalog(request, id, 'services', 'delete', undefined, resourceId);
+  }
   @Get('/v1/admin/tenants/:id/professionals')
   @ApiCookieAuth()
   adminProfessionals(@Req() request: FastifyRequest, @Param('id') id: string) {
@@ -295,6 +300,11 @@ class FoundationController {
   @ApiCookieAuth()
   adminUpdateProfessional(@Req() request: FastifyRequest, @Param('id') id: string, @Param('resourceId') resourceId: string, @Body() body: unknown) {
     return this.services.adminCatalog(request, id, 'professionals', 'update', body, resourceId);
+  }
+  @Delete('/v1/admin/tenants/:id/professionals/:resourceId')
+  @ApiCookieAuth()
+  adminDeleteProfessional(@Req() request: FastifyRequest, @Param('id') id: string, @Param('resourceId') resourceId: string) {
+    return this.services.adminCatalog(request, id, 'professionals', 'delete', undefined, resourceId);
   }
   @Get('/v1/admin/tenants/:id/schedule')
   @ApiCookieAuth()
@@ -368,6 +378,7 @@ class CatalogController {
       if (!origin || !this.services.config.TRUSTED_ORIGINS.includes(origin))
         throw new AccessError("FORBIDDEN");
       if (
+        request.method !== "DELETE" &&
         !/^application\/json(?:\s*;|$)/i.test(
           request.headers["content-type"] ?? "",
         )
@@ -421,6 +432,19 @@ class CatalogController {
     );
   }
 
+  @Delete("/services/:id")
+  @ApiOperation({ summary: "Delete service if no linked appointments exist" })
+  async deleteService(
+    @Req() request: FastifyRequest,
+    @Param("slug") slug: string,
+    @Param("id") id: string,
+  ) {
+    return this.services.catalog.deleteService(
+      await this.context(request, slug, "services.manage", true),
+      id,
+    );
+  }
+
   @Get("/professionals")
   @ApiOperation({
     summary:
@@ -466,6 +490,19 @@ class CatalogController {
       await this.context(request, slug, "professionals.manage", true),
       id,
       body,
+    );
+  }
+
+  @Delete("/professionals/:id")
+  @ApiOperation({ summary: "Delete professional if no linked appointments exist" })
+  async deleteProfessional(
+    @Req() request: FastifyRequest,
+    @Param("slug") slug: string,
+    @Param("id") id: string,
+  ) {
+    return this.services.catalog.deleteProfessional(
+      await this.context(request, slug, "professionals.manage", true),
+      id,
     );
   }
 }

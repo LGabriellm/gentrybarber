@@ -35,6 +35,10 @@ export function TenantOperations({ tenantId, services, professionals, initialSch
   const [hours, setHours] = useState<DraftWindow[]>(draftWindows(windowsForTarget(initialSchedule, defaultScheduleTarget(initialSchedule))));
   const [scheduleConflict, setScheduleConflict] = useState(false);
   const scheduleDirty = useRef(false);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [editingProfessionalId, setEditingProfessionalId] = useState<string | null>(null);
+  const [confirmDeleteServiceId, setConfirmDeleteServiceId] = useState<string | null>(null);
+  const [confirmDeleteProfessionalId, setConfirmDeleteProfessionalId] = useState<string | null>(null);
   const activeLocations = services.locations.filter(location => location.active);
   const [professionalLocation, setProfessionalLocation] = useState(activeLocations[0]?.id ?? '');
   useEffect(() => {
@@ -46,7 +50,7 @@ export function TenantOperations({ tenantId, services, professionals, initialSch
       setScheduleConflict(false);
     }
   }, [initialSchedule]);
-  async function mutate(path: string, method: 'POST' | 'PATCH' | 'PUT', body: unknown, success: string) {
+  async function mutate(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body: unknown, success: string) {
     if (busy) return false;
     setBusy(true); setMessage(null);
     const result = await adminTenantOperation(tenantId, path, method, body);
@@ -59,10 +63,44 @@ export function TenantOperations({ tenantId, services, professionals, initialSch
     const ok = await mutate('services', 'POST', { locationId: form.get('locationId'), name: String(form.get('name') ?? '').trim(), description: String(form.get('description') ?? '').trim() || null, durationMinutes: Number(form.get('durationMinutes')), priceCents: Math.round(Number(price) * 100), active: true }, 'Serviço cadastrado.');
     if (ok) element.reset();
   }
+  async function updateService(event: FormEvent<HTMLFormElement>, service: Service) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const price = String(form.get('price') ?? '').replace(',', '.');
+    const ok = await mutate(`services/${service.id}`, 'PATCH', {
+      name: String(form.get('name') ?? '').trim(),
+      description: String(form.get('description') ?? '').trim() || null,
+      durationMinutes: Number(form.get('durationMinutes')),
+      priceCents: Math.round(Number(price) * 100),
+      active: form.get('active') === 'on',
+      expectedVersion: service.version,
+    }, 'Serviço atualizado.');
+    if (ok) setEditingServiceId(null);
+  }
+  async function deleteService(service: Service) {
+    const ok = await mutate(`services/${service.id}`, 'DELETE', undefined, 'Serviço excluído.');
+    if (ok) setConfirmDeleteServiceId(null);
+  }
   async function createProfessional(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const element = event.currentTarget; const form = new FormData(element); const locationId = String(form.get('locationId') ?? '');
     const ok = await mutate('professionals', 'POST', { locationId, name: String(form.get('name') ?? '').trim(), bio: String(form.get('bio') ?? '').trim() || null, active: true, serviceIds: form.getAll('serviceIds').map(String) }, 'Profissional cadastrado.');
     if (ok) element.reset();
+  }
+  async function updateProfessional(event: FormEvent<HTMLFormElement>, professional: Professional) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const ok = await mutate(`professionals/${professional.id}`, 'PATCH', {
+      name: String(form.get('name') ?? '').trim(),
+      bio: String(form.get('bio') ?? '').trim() || null,
+      active: form.get('active') === 'on',
+      serviceIds: form.getAll('serviceIds').map(String),
+      expectedVersion: professional.version,
+    }, 'Profissional atualizado.');
+    if (ok) setEditingProfessionalId(null);
+  }
+  async function deleteProfessional(professional: Professional) {
+    const ok = await mutate(`professionals/${professional.id}`, 'DELETE', undefined, 'Profissional excluído.');
+    if (ok) setConfirmDeleteProfessionalId(null);
   }
   async function loadSchedule(locationId: string) {
     if (!locationId || busy) return;
@@ -96,8 +134,95 @@ export function TenantOperations({ tenantId, services, professionals, initialSch
   }
   return <>
     {message && <p className={message.error ? 'admin-feedback' : 'admin-save-success'} role={message.error ? 'alert' : 'status'}>{message.text}</p>}
-    <section id="servicos" className="admin-panel"><div className="admin-panel-heading"><div><h2>Serviços</h2><p>Catálogo, duração, preço e disponibilidade por unidade.</p></div><span>{services.items.length} cadastrados</span></div><form className="admin-form" noValidate onSubmit={createService}><fieldset disabled={busy || !activeLocations.length}><div className="admin-form-grid"><label>Unidade<select name="locationId" required defaultValue=""><option value="" disabled>Selecione</option>{activeLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>Nome do serviço<input name="name" required maxLength={120} /></label><label>Preço (R$)<input name="price" inputMode="decimal" placeholder="45,00" required /></label><label>Duração em minutos<input name="durationMinutes" type="number" min={1} max={1440} required /></label><label className="admin-wide-field">Descrição<textarea name="description" rows={3} maxLength={2000} /></label></div></fieldset><div className="admin-form-actions"><button className="button" disabled={busy || !activeLocations.length}>Adicionar serviço</button></div></form>{services.items.length ? <div className="admin-operation-grid">{services.items.map(service => <article className="admin-location-card" key={service.id}><div><h3>{service.name}</h3><span className={`admin-status ${service.active ? '' : 'admin-status-muted'}`}>{service.active ? 'Ativo' : 'Inativo'}</span></div><p>{money(service.priceCents)} · {service.durationMinutes} minutos · {services.locations.find(location => location.id === service.locationId)?.name}</p><button type="button" className="button secondary" disabled={busy} onClick={() => mutate(`services/${service.id}`, 'PATCH', { name: service.name, description: service.description, durationMinutes: service.durationMinutes, priceCents: service.priceCents, active: !service.active, expectedVersion: service.version }, service.active ? 'Serviço desativado.' : 'Serviço reativado.')}>{service.active ? 'Desativar' : 'Reativar'}</button></article>)}</div> : <p className="admin-empty">Nenhum serviço cadastrado.</p>}</section>
-    <section id="profissionais" className="admin-panel"><div className="admin-panel-heading"><div><h2>Profissionais</h2><p>Equipe e serviços realizados em cada unidade.</p></div><span>{professionals.items.length} cadastrados</span></div><form className="admin-form" noValidate onSubmit={createProfessional}><fieldset disabled={busy || !activeLocations.length}><div className="admin-form-grid"><label>Unidade<select name="locationId" required value={professionalLocation} onChange={event => setProfessionalLocation(event.target.value)}><option value="" disabled>Selecione</option>{activeLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>Nome do profissional<input name="name" required maxLength={120} /></label><label className="admin-wide-field">Apresentação<textarea name="bio" rows={3} maxLength={2000} /></label></div><fieldset className="admin-check-grid"><legend>Serviços realizados</legend>{professionals.services.filter(service => service.locationId === professionalLocation).map(service => <label className="admin-checkbox" key={service.id}><input type="checkbox" name="serviceIds" value={service.id} />{service.name}</label>)}</fieldset></fieldset><div className="admin-form-actions"><button className="button" disabled={busy || !activeLocations.length}>Adicionar profissional</button></div></form>{professionals.items.length ? <div className="admin-operation-grid">{professionals.items.map(professional => <article className="admin-location-card" key={professional.id}><div><h3>{professional.name}</h3><span className={`admin-status ${professional.active ? '' : 'admin-status-muted'}`}>{professional.active ? 'Ativo' : 'Inativo'}</span></div><p>{professional.bio || 'Sem apresentação'} · {professional.serviceIds.length} serviços</p><button type="button" className="button secondary" disabled={busy} onClick={() => mutate(`professionals/${professional.id}`, 'PATCH', { name: professional.name, bio: professional.bio, active: !professional.active, serviceIds: professional.serviceIds, expectedVersion: professional.version }, professional.active ? 'Profissional desativado.' : 'Profissional reativado.')}>{professional.active ? 'Desativar' : 'Reativar'}</button></article>)}</div> : <p className="admin-empty">Nenhum profissional cadastrado.</p>}</section>
+    <section id="servicos" className="admin-panel"><div className="admin-panel-heading"><div><h2>Serviços</h2><p>Catálogo, duração, preço e disponibilidade por unidade.</p></div><span>{services.items.length} cadastrados</span></div><form className="admin-form" noValidate onSubmit={createService}><fieldset disabled={busy || !activeLocations.length}><div className="admin-form-grid"><label>Unidade<select name="locationId" required defaultValue=""><option value="" disabled>Selecione</option>{activeLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>Nome do serviço<input name="name" required maxLength={120} /></label><label>Preço (R$)<input name="price" inputMode="decimal" placeholder="45,00" required /></label><label>Duração em minutos<input name="durationMinutes" type="number" min={1} max={1440} required /></label><label className="admin-wide-field">Descrição<textarea name="description" rows={3} maxLength={2000} /></label></div></fieldset><div className="admin-form-actions"><button className="button" disabled={busy || !activeLocations.length}>Adicionar serviço</button></div></form>{services.items.length ? <div className="admin-operation-grid">{services.items.map(service => editingServiceId === service.id ? (
+      <article className="admin-location-card admin-editing-card" key={service.id}>
+        <form className="admin-form" noValidate onSubmit={event => updateService(event, service)}>
+          <fieldset disabled={busy}>
+            <div className="admin-form-grid">
+              <label>Nome do serviço<input name="name" defaultValue={service.name} required maxLength={120} /></label>
+              <label>Preço (R$)<input name="price" defaultValue={(service.priceCents / 100).toFixed(2).replace('.', ',')} inputMode="decimal" required /></label>
+              <label>Duração em minutos<input name="durationMinutes" type="number" defaultValue={service.durationMinutes} min={1} max={1440} required /></label>
+              <label className="admin-wide-field">Descrição<textarea name="description" rows={3} maxLength={2000} defaultValue={service.description || ''} /></label>
+              <label className="admin-checkbox"><input type="checkbox" name="active" defaultChecked={service.active} />Ativo na barbearia</label>
+            </div>
+            <div className="admin-form-actions">
+              <button className="button" type="submit" disabled={busy}>Salvar alterações</button>
+              <button type="button" className="button secondary" disabled={busy} onClick={() => setEditingServiceId(null)}>Cancelar</button>
+            </div>
+          </fieldset>
+        </form>
+      </article>
+    ) : (
+      <article className="admin-location-card" key={service.id}>
+        <div>
+          <h3>{service.name}</h3>
+          <span className={`admin-status ${service.active ? '' : 'admin-status-muted'}`}>{service.active ? 'Ativo' : 'Inativo'}</span>
+        </div>
+        <p>{money(service.priceCents)} · {service.durationMinutes} minutos · {services.locations.find(location => location.id === service.locationId)?.name}</p>
+        {service.description && <p className="admin-card-desc">{service.description}</p>}
+        <div className="admin-card-actions">
+          <button type="button" className="button secondary" disabled={busy} onClick={() => { setEditingServiceId(service.id); setConfirmDeleteServiceId(null); }}>Editar</button>
+          <button type="button" className="button secondary" disabled={busy} onClick={() => mutate(`services/${service.id}`, 'PATCH', { name: service.name, description: service.description, durationMinutes: service.durationMinutes, priceCents: service.priceCents, active: !service.active, expectedVersion: service.version }, service.active ? 'Serviço desativado.' : 'Serviço reativado.')}>{service.active ? 'Desativar' : 'Reativar'}</button>
+          <button type="button" className="button danger" disabled={busy} onClick={() => setConfirmDeleteServiceId(service.id)}>Excluir</button>
+        </div>
+        {confirmDeleteServiceId === service.id && (
+          <div className="admin-confirm-delete">
+            <p>Deseja excluir o serviço definitivamente? Se preferir manter o histórico sem novos agendamentos, você pode desativá-lo.</p>
+            <div className="admin-confirm-buttons">
+              <button type="button" className="button danger" disabled={busy} onClick={() => deleteService(service)}>Sim, excluir</button>
+              <button type="button" className="button secondary" disabled={busy} onClick={() => setConfirmDeleteServiceId(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
+      </article>
+    ))}</div> : <p className="admin-empty">Nenhum serviço cadastrado.</p>}</section>
+    <section id="profissionais" className="admin-panel"><div className="admin-panel-heading"><div><h2>Profissionais</h2><p>Equipe e serviços realizados em cada unidade.</p></div><span>{professionals.items.length} cadastrados</span></div><form className="admin-form" noValidate onSubmit={createProfessional}><fieldset disabled={busy || !activeLocations.length}><div className="admin-form-grid"><label>Unidade<select name="locationId" required value={professionalLocation} onChange={event => setProfessionalLocation(event.target.value)}><option value="" disabled>Selecione</option>{activeLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>Nome do profissional<input name="name" required maxLength={120} /></label><label className="admin-wide-field">Apresentação<textarea name="bio" rows={3} maxLength={2000} /></label></div><fieldset className="admin-check-grid"><legend>Serviços realizados</legend>{professionals.services.filter(service => service.locationId === professionalLocation).map(service => <label className="admin-checkbox" key={service.id}><input type="checkbox" name="serviceIds" value={service.id} />{service.name}</label>)}</fieldset></fieldset><div className="admin-form-actions"><button className="button" disabled={busy || !activeLocations.length}>Adicionar profissional</button></div></form>{professionals.items.length ? <div className="admin-operation-grid">{professionals.items.map(professional => editingProfessionalId === professional.id ? (
+      <article className="admin-location-card admin-editing-card" key={professional.id}>
+        <form className="admin-form" noValidate onSubmit={event => updateProfessional(event, professional)}>
+          <fieldset disabled={busy}>
+            <div className="admin-form-grid">
+              <label>Nome do profissional<input name="name" defaultValue={professional.name} required maxLength={120} /></label>
+              <label className="admin-wide-field">Apresentação<textarea name="bio" rows={3} maxLength={2000} defaultValue={professional.bio || ''} /></label>
+              <label className="admin-checkbox"><input type="checkbox" name="active" defaultChecked={professional.active} />Ativo na barbearia</label>
+            </div>
+            <fieldset className="admin-check-grid"><legend>Serviços vinculados</legend>
+              {professionals.services.filter(s => s.locationId === professional.locationId).map(s => (
+                <label className="admin-checkbox" key={s.id}>
+                  <input type="checkbox" name="serviceIds" value={s.id} defaultChecked={professional.serviceIds.includes(s.id)} />
+                  {s.name}
+                </label>
+              ))}
+            </fieldset>
+            <div className="admin-form-actions">
+              <button className="button" type="submit" disabled={busy}>Salvar alterações</button>
+              <button type="button" className="button secondary" disabled={busy} onClick={() => setEditingProfessionalId(null)}>Cancelar</button>
+            </div>
+          </fieldset>
+        </form>
+      </article>
+    ) : (
+      <article className="admin-location-card" key={professional.id}>
+        <div>
+          <h3>{professional.name}</h3>
+          <span className={`admin-status ${professional.active ? '' : 'admin-status-muted'}`}>{professional.active ? 'Ativo' : 'Inativo'}</span>
+        </div>
+        <p>{professional.bio || 'Sem apresentação'} · {professional.serviceIds.length} serviços</p>
+        <div className="admin-card-actions">
+          <button type="button" className="button secondary" disabled={busy} onClick={() => { setEditingProfessionalId(professional.id); setConfirmDeleteProfessionalId(null); }}>Editar</button>
+          <button type="button" className="button secondary" disabled={busy} onClick={() => mutate(`professionals/${professional.id}`, 'PATCH', { name: professional.name, bio: professional.bio, active: !professional.active, serviceIds: professional.serviceIds, expectedVersion: professional.version }, professional.active ? 'Profissional desativado.' : 'Profissional reativado.')}>{professional.active ? 'Desativar' : 'Reativar'}</button>
+          <button type="button" className="button danger" disabled={busy} onClick={() => setConfirmDeleteProfessionalId(professional.id)}>Excluir</button>
+        </div>
+        {confirmDeleteProfessionalId === professional.id && (
+          <div className="admin-confirm-delete">
+            <p>Deseja excluir o profissional definitivamente? Se preferir manter o histórico sem novos agendamentos, você pode desativá-lo.</p>
+            <div className="admin-confirm-buttons">
+              <button type="button" className="button danger" disabled={busy} onClick={() => deleteProfessional(professional)}>Sim, excluir</button>
+              <button type="button" className="button secondary" disabled={busy} onClick={() => setConfirmDeleteProfessionalId(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
+      </article>
+    ))}</div> : <p className="admin-empty">Nenhum profissional cadastrado.</p>}</section>
     <section id="horarios" className="admin-panel">
       <div className="admin-panel-heading">
         <div><h2>Expediente semanal</h2><p>Configure a unidade e a escala usada para calcular os horários disponíveis.</p></div>

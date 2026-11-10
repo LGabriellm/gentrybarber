@@ -36,5 +36,15 @@
 .admin-inline-confirm p { width: 100%; margin: 0; color: #7b3d2d; }
 .admin-conflict-recovery { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 0 24px 20px; padding: 14px; border: 1px solid #e7c7b8; border-radius: 8px; background: #fff6f0; color: #7b3d2d; font-size: 12px; }
 .admin-app .button.danger { background: #8a3728; color: #fff; border-color: #8a3728; }
+.admin-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid #eef2eb; }
+.admin-card-actions .button { font-size: 11px; min-height: 36px; padding: 6px 12px; }
+.admin-confirm-delete { margin-top: 12px; padding: 12px; background: #fff5f5; border: 1px solid #fecdca; border-radius: 8px; font-size: 12px; }
+.admin-confirm-delete p { color: #8a2a18; margin: 0 0 8px; }
+.admin-confirm-buttons { display: flex; gap: 8px; }
+.admin-confirm-buttons .button { font-size: 11px; min-height: 32px; padding: 5px 10px; }
+.admin-editing-card { background: #fafbf9; border-color: #c7d5c3; }
+.admin-editing-card .admin-form { padding: 0; }
+.admin-editing-card .admin-form-actions { padding: 14px 0 0; }
+.admin-card-desc { font-size: 12px; color: #607465; margin: 4px 0 0; }
 @media (max-width: 1000px) { .admin-operation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .admin-check-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .admin-operation-grid { grid-template-columns: 1fr; padding: 16px; } .admin-check-grid { grid-template-columns: 1fr; } .admin-schedule-scope { grid-template-columns: 1fr; padding: 14px; } .admin-hours-row { grid-template-columns: 1fr 1fr; } .admin-hours-row > .button { grid-column: 1 / -1; } .admin-conflict-recovery { align-items: stretch; flex-direction: column; margin: 0 16px 16px; } }

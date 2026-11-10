@@ -52,8 +52,8 @@ export async function proxyCatalog(request: Request, params: CatalogRouteParams)
   if (!/^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[a-z0-9]$/.test(slug) || !resources.has(resource) || id.length > 1 || id.some(value => !/^[a-zA-Z0-9_-]{1,128}$/.test(value))) {
     return error(404, 'Recurso não encontrado.');
   }
-  const write = request.method === 'POST' || request.method === 'PATCH';
-  if ((!write && request.method !== 'GET') || (request.method === 'PATCH' ? id.length !== 1 : id.length !== 0)) {
+  const write = request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE';
+  if ((!write && request.method !== 'GET') || ((request.method === 'PATCH' || request.method === 'DELETE') ? id.length !== 1 : id.length !== 0)) {
     return error(405, 'Método não permitido.');
   }
   const incoming = new URL(request.url);
@@ -63,7 +63,8 @@ export async function proxyCatalog(request: Request, params: CatalogRouteParams)
   if (write && request.headers.get('origin') !== `${proto}://${host}`) {
     return error(403, 'Origem da solicitação não permitida.');
   }
-  if (write && request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
+  const hasJsonBody = request.method === 'POST' || request.method === 'PATCH';
+  if (hasJsonBody && request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
     return error(415, 'Envie os dados no formato JSON.');
   }
   const forwarded = new Headers();
@@ -72,7 +73,7 @@ export async function proxyCatalog(request: Request, params: CatalogRouteParams)
     if (value) forwarded.set(name, value);
   }
   let body: string | undefined;
-  if (write) {
+  if (hasJsonBody) {
     const result = await readCatalogBody(request);
     if ('response' in result) return result.response;
     body = result.body;

@@ -5,7 +5,7 @@ export type PermissionKey = typeof permissionKeys[number];
 export interface TenantIdentity { readonly id: string; readonly slug: string; readonly name: string; readonly status: string; readonly planId: string }
 export interface TenantContext { readonly tenant: TenantIdentity; readonly userId: string; readonly membershipId: string; readonly role: string; readonly permissions: readonly string[] }
 export class AccessError extends Error {
-  constructor(public readonly code: 'UNAUTHENTICATED' | 'FORBIDDEN' | 'NOT_FOUND' | 'FEATURE_DISABLED' | 'INVALID_INPUT' | 'CONFLICT', message = code) { super(message); this.name = 'AccessError'; }
+  constructor(public readonly code: 'UNAUTHENTICATED' | 'FORBIDDEN' | 'NOT_FOUND' | 'FEATURE_DISABLED' | 'INVALID_INPUT' | 'CONFLICT', message: string = code) { super(message); this.name = 'AccessError'; }
 }
 export type * from './catalog';
 export type * from './booking';

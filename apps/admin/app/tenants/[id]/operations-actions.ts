@@ -14,8 +14,13 @@ export async function adminTenantOperation<T>(tenantId: string, path: string, me
       ...(method !== 'GET' ? { body: JSON.stringify(body ?? {}) } : {}),
     });
     if (response.ok) return { data: await response.json() as T, status: response.status };
+    let customMessage: string | undefined;
+    try {
+      const payload = await response.json() as { message?: string };
+      if (payload.message) customMessage = payload.message;
+    } catch { /* ignore unreadable body */ }
     const messages: Record<number, string> = { 400: 'Revise os campos informados.', 401: 'Sua sessão expirou.', 403: 'A operação não foi permitida.', 404: 'O registro não foi encontrado nesta barbearia.', 409: 'Os dados mudaram ou a alteração conflita com atendimentos futuros. Recarregue antes de tentar novamente.', 429: 'Muitas solicitações. Aguarde um momento.' };
-    return { error: messages[response.status] ?? 'Não foi possível concluir a operação.', status: response.status };
+    return { error: customMessage ?? messages[response.status] ?? 'Não foi possível concluir a operação.', status: response.status };
   } catch (error) {
     logger.error('Failed admin tenant operation', error, { tenantId, path, method });
     return { error: 'A conexão foi interrompida. Recarregue para conferir o estado atual.' };

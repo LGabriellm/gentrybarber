@@ -24,9 +24,11 @@ describe('catalog input and permission boundaries', () => {
     ['list services', (catalog: CatalogService, denied: TenantContext) => catalog.listServices(denied)],
     ['create service', (catalog: CatalogService, denied: TenantContext) => catalog.createService(denied, {})],
     ['update service', (catalog: CatalogService, denied: TenantContext) => catalog.updateService(denied, 'service-a', {})],
+    ['delete service', (catalog: CatalogService, denied: TenantContext) => catalog.deleteService(denied, 'service-a')],
     ['list professionals', (catalog: CatalogService, denied: TenantContext) => catalog.listProfessionals(denied)],
     ['create professional', (catalog: CatalogService, denied: TenantContext) => catalog.createProfessional(denied, {})],
     ['update professional', (catalog: CatalogService, denied: TenantContext) => catalog.updateProfessional(denied, 'professional-a', {})],
+    ['delete professional', (catalog: CatalogService, denied: TenantContext) => catalog.deleteProfessional(denied, 'professional-a')],
   ] as const;
 
   it.each(deniedCalls)('denies %s without the relevant permission before reading input or data', async (_name, call) => {
@@ -95,6 +97,8 @@ describe('catalog input and permission boundaries', () => {
     const { catalog, transaction } = fixture();
     await expect(catalog.updateService(context, id, { ...serviceFields, expectedVersion })).rejects.toBeInstanceOf(ZodError);
     await expect(catalog.updateProfessional(context, id, { ...professionalFields, expectedVersion })).rejects.toBeInstanceOf(ZodError);
+    await expect(catalog.deleteService(context, id)).rejects.toBeInstanceOf(ZodError);
+    await expect(catalog.deleteProfessional(context, id)).rejects.toBeInstanceOf(ZodError);
     expect(transaction).not.toHaveBeenCalled();
   });
 });

@@ -25,14 +25,16 @@ const forbiddenMessages: Record<string, string> = {
 };
 
 async function failureMessage(response: Response): Promise<string> {
-  if (response.status === 403) {
-    try {
-      const body = await response.json() as { error?: string };
+  try {
+    const body = await response.json() as { error?: string; message?: string };
+    if (body.message) return body.message;
+    if (response.status === 403) {
       const code = body.error ?? '';
       if (code in forbiddenMessages) return forbiddenMessages[code] as string;
-    } catch { /* body unreadable, fall through */ }
-    return forbiddenMessages.FORBIDDEN as string;
-  }
+      return forbiddenMessages.FORBIDDEN as string;
+    }
+  } catch { /* body unreadable, fall through */ }
+  if (response.status === 403) return forbiddenMessages.FORBIDDEN as string;
   return failureMessages[response.status] || 'Não foi possível completar a operação. Tente novamente.';
 }
 
@@ -45,6 +47,7 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
   const [data, setData] = useState(initialData);
   const [location, setLocation] = useState('');
   const [editing, setEditing] = useState<Entry | 'new' | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
@@ -64,11 +67,58 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
 
   function openEditor(entry: Entry | 'new') {
     setEditing(entry);
+    setConfirmingDeleteId(null);
     setFeedback(null);
     requestAnimationFrame(() => {
       editorRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
       editorRef.current?.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
     });
+  }
+
+  async function remove(entry: Entry) {
+    if (busy || feedback?.conflict) return;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(`${apiPath}/${encodeURIComponent(entry.id)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!response.ok) {
+        announce({
+          text: await failureMessage(response),
+          error: true,
+          conflict: response.status === 409,
+          signIn: response.status === 401,
+        });
+        return;
+      }
+      setData(previous => {
+        const next = previous.items.filter(item => item.id !== entry.id);
+        return 'services' in previous
+          ? { ...previous, items: next as CatalogProfessional[] }
+          : { ...previous, items: next as CatalogService[] };
+      });
+      if (editing && editing !== 'new' && editing.id === entry.id) {
+        setEditing(null);
+      }
+      setConfirmingDeleteId(null);
+      announce({
+        text: `${services ? 'Serviço' : 'Profissional'} "${entry.name}" excluído com sucesso.`,
+        error: false,
+      });
+    } catch {
+      announce({
+        text: 'Não foi possível confirmar a exclusão. Recarregue os dados antes de tentar novamente.',
+        error: true,
+        conflict: true,
+      });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function save(input: Input, entry?: Entry) {
@@ -136,7 +186,7 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
     {!hasActiveLocation && <p className="notice">Não há unidades ativas para novos cadastros. Peça ao responsável pelo ambiente para ativar uma unidade.</p>}
     {editing && <section ref={editorRef} className="panel catalog-editor" aria-label={editing === 'new' ? `Novo ${singular}` : `Editar ${singular}`}>
       <div className="section-heading"><h2>{editing === 'new' ? `Novo ${singular}` : `Editar ${singular}`}</h2><button type="button" className="button secondary" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div>
-      <CatalogEditor key={editing === 'new' ? `new-${resource}` : `${editing.id}-${editing.version}`} resource={resource} entry={editing === 'new' ? undefined : editing} locations={data.locations} services={serviceOptions} defaultLocation={location} disabled={busy || !!feedback?.conflict} onInvalid={text => announce({ text, error: true })} onSave={save} />
+      <CatalogEditor key={editing === 'new' ? `new-${resource}` : `${editing.id}-${editing.version}`} resource={resource} entry={editing === 'new' ? undefined : editing} locations={data.locations} services={serviceOptions} defaultLocation={location} disabled={busy || !!feedback?.conflict} onInvalid={text => announce({ text, error: true })} onSave={save} onDelete={remove} confirmingDelete={editing !== 'new' && confirmingDeleteId === editing.id} onRequestDelete={entry => setConfirmingDeleteId(entry.id)} onCancelDelete={() => setConfirmingDeleteId(null)} />
     </section>}
     <section className="catalog-list" aria-label={`Lista de ${services ? 'serviços' : 'profissionais'}`}>
       <div className="catalog-list-heading"><h2>{services ? 'Catálogo de serviços' : 'Equipe da barbearia'}</h2><span>{items.length} {items.length === 1 ? 'cadastro' : 'cadastros'}</span></div>
@@ -145,15 +195,27 @@ export function CatalogManager({ slug, resource, initialData }: { slug: string; 
         <h3>{item.name}</h3>
         {'priceCents' in item ? <><p className="catalog-card-detail">{formatPrice(item.priceCents)} <span>· {item.durationMinutes} minutos</span></p><p className="catalog-description">{item.description || 'Sem descrição.'}</p></> : <>{item.phone && <p className="catalog-card-detail">WhatsApp (avisos): {item.phone}</p>}<p className="catalog-description">{item.bio || 'Sem apresentação.'}</p><div className="catalog-tags" aria-label={`Serviços de ${item.name}`}>{item.serviceIds.length ? item.serviceIds.map(id => { const service = serviceOptions.find(option => option.id === id); return <span key={id}>{service?.name ?? 'Serviço indisponível'}{service && !service.active ? ' (inativo)' : ''}</span>; }) : <span>Nenhum serviço vinculado</span>}</div></>}
         {!locations.get(item.locationId)?.active && <p className="catalog-note">Unidade inativa: este cadastro não aparece no site.</p>}
-        <div className="catalog-card-actions"><button type="button" className="button secondary" aria-label={`Editar ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => openEditor(item)}>Editar</button><button type="button" className="catalog-text-button" aria-label={`${item.active ? 'Desativar' : 'Reativar'} ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => save({ ...fieldsFromEntry(item), active: !item.active, expectedVersion: item.version }, item)}>{item.active ? 'Desativar' : 'Reativar'}</button></div>
+        <div className="catalog-card-actions">
+          <button type="button" className="button secondary" aria-label={`Editar ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => openEditor(item)}>Editar</button>
+          <button type="button" className="catalog-text-button" aria-label={`${item.active ? 'Desativar' : 'Reativar'} ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => save({ ...fieldsFromEntry(item), active: !item.active, expectedVersion: item.version }, item)}>{item.active ? 'Desativar' : 'Reativar'}</button>
+          <button type="button" className="catalog-text-button catalog-delete-button" aria-label={`Excluir ${item.name}`} disabled={busy || !!feedback?.conflict} onClick={() => setConfirmingDeleteId(item.id)}>Excluir</button>
+        </div>
+        {confirmingDeleteId === item.id && <div className="catalog-delete-confirm" role="alert">
+          <p>Excluir <strong>{item.name}</strong> definitivamente? Para manter o histórico sem oferecer novos agendamentos, prefira desativar.</p>
+          <div className="catalog-delete-actions">
+            <button type="button" className="button catalog-button-danger" disabled={busy} onClick={() => remove(item)}>Sim, excluir</button>
+            <button type="button" className="button secondary" disabled={busy} onClick={() => setConfirmingDeleteId(null)}>Cancelar</button>
+          </div>
+        </div>}
       </article>)}</div>}
     </section>
   </div>;
 }
 
-function CatalogEditor({ resource, entry, locations, services, defaultLocation, disabled, onInvalid, onSave }: {
+function CatalogEditor({ resource, entry, locations, services, defaultLocation, disabled, confirmingDelete, onInvalid, onSave, onDelete, onRequestDelete, onCancelDelete }: {
   resource: Resource; entry?: Entry; locations: CatalogLocation[]; services: ProfessionalCatalog['services'];
-  defaultLocation: string; disabled: boolean; onInvalid: (message: string) => void; onSave: (input: Input, entry?: Entry) => Promise<void>;
+  defaultLocation: string; disabled: boolean; confirmingDelete?: boolean; onInvalid: (message: string) => void; onSave: (input: Input, entry?: Entry) => Promise<void>;
+  onDelete?: (entry: Entry) => Promise<void> | void; onRequestDelete?: (entry: Entry) => void; onCancelDelete?: () => void;
 }) {
   const activeLocations = locations.filter(item => item.active);
   const [locationId, setLocationId] = useState(entry?.locationId || (activeLocations.some(item => item.id === defaultLocation) ? defaultLocation : activeLocations[0]?.id || ''));
@@ -201,8 +263,18 @@ function CatalogEditor({ resource, entry, locations, services, defaultLocation, 
       <label className="catalog-field" htmlFor={`${idPrefix}-detail`}>{isService ? 'Descrição' : 'Bio'}<textarea id={`${idPrefix}-detail`} name="detail" rows={4} maxLength={2000} defaultValue={entry ? 'description' in entry ? entry.description || '' : entry.bio || '' : ''} /><small>Opcional. Até 2.000 caracteres.</small></label>
       {!isService && <fieldset className="catalog-services"><legend>Serviços</legend><p>Selecione os serviços realizados nesta unidade. Vínculos com serviços inativos são preservados.</p>{availableServices.length ? <div className="catalog-service-options">{availableServices.map(item => <label key={item.id} className="catalog-checkbox"><input type="checkbox" checked={selectedServices.includes(item.id)} onChange={event => setSelectedServices(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />{item.name}{item.active ? '' : ' (inativo)'}</label>)}</div> : <p className="notice">Esta unidade ainda não possui serviços. Você pode cadastrar o profissional e vincular os serviços depois.</p>}<small>{selectedServices.length} de 100 serviços selecionados</small></fieldset>}
       <label className="catalog-checkbox"><input name="active" type="checkbox" defaultChecked={entry?.active ?? true} />Ativo no catálogo</label>
-      <p className="catalog-note">Cadastros inativos ficam disponíveis para edição e não aparecem no site público.</p>
-      <button className="button" type="submit">{disabled ? 'Aguarde…' : `Salvar ${isService ? 'serviço' : 'profissional'}`}</button>
+      <p className="catalog-note">Cadastros inativos continuam salvos, mantêm o histórico e podem ser reativados a qualquer momento.</p>
+      <div className="catalog-form-bottom-actions">
+        <button className="button" type="submit">{disabled ? 'Aguarde…' : `Salvar ${isService ? 'serviço' : 'profissional'}`}</button>
+        {entry && onRequestDelete && <button type="button" className="catalog-text-button catalog-delete-button" disabled={disabled} onClick={() => onRequestDelete(entry)}>Excluir este {isService ? 'serviço' : 'profissional'}</button>}
+      </div>
+      {entry && confirmingDelete && onDelete && onCancelDelete && <div className="catalog-delete-confirm" role="alert">
+        <p>Excluir <strong>{entry.name}</strong> definitivamente? Para manter o histórico sem oferecer novos agendamentos, prefira desativar.</p>
+        <div className="catalog-delete-actions">
+          <button type="button" className="button catalog-button-danger" disabled={disabled} onClick={() => onDelete(entry)}>Sim, excluir</button>
+          <button type="button" className="button secondary" disabled={disabled} onClick={onCancelDelete}>Cancelar</button>
+        </div>
+      </div>}
     </fieldset>
   </form>;
 }

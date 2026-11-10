@@ -124,6 +124,29 @@ export class CatalogOperations {
     });
   }
 
+  async deleteService(context: CatalogActor, id: string): Promise<{ success: true }> {
+    const resourceId = idSchema.parse(id);
+    const tenantId = context.tenant.id;
+    return this.db.$transaction(async tx => {
+      const current = await tx.service.findFirst({
+        where: { tenantId, id: resourceId },
+        select: { id: true, name: true },
+      });
+      if (!current) throw new AccessError('NOT_FOUND');
+      const appointmentCount = await tx.appointmentService.count({
+        where: { tenantId, serviceId: resourceId },
+      });
+      if (appointmentCount > 0) {
+        throw new AccessError('CONFLICT', 'Não é possível excluir este serviço pois ele possui agendamentos vinculados. Para que não receba novos agendamentos, você pode desativá-lo.');
+      }
+      await tx.service.delete({
+        where: { tenantId_id: { tenantId, id: resourceId } },
+      });
+      await audit(tx, context, 'Service', resourceId, 'service.deleted');
+      return { success: true };
+    });
+  }
+
   async createProfessional(context: CatalogActor, input: unknown): Promise<CatalogProfessional> {
     const { serviceIds, ...fields } = createProfessionalSchema.parse(input);
     const tenantId = context.tenant.id;
@@ -165,6 +188,29 @@ export class CatalogOperations {
       return professionalItem(item, serviceIds);
     });
   }
+
+  async deleteProfessional(context: CatalogActor, id: string): Promise<{ success: true }> {
+    const resourceId = idSchema.parse(id);
+    const tenantId = context.tenant.id;
+    return this.db.$transaction(async tx => {
+      const current = await tx.professional.findFirst({
+        where: { tenantId, id: resourceId },
+        select: { id: true, name: true },
+      });
+      if (!current) throw new AccessError('NOT_FOUND');
+      const appointmentCount = await tx.appointment.count({
+        where: { tenantId, professionalId: resourceId },
+      });
+      if (appointmentCount > 0) {
+        throw new AccessError('CONFLICT', 'Não é possível excluir este profissional pois ele possui agendamentos vinculados. Para que não receba novos agendamentos, você pode desativá-lo.');
+      }
+      await tx.professional.delete({
+        where: { tenantId_id: { tenantId, id: resourceId } },
+      });
+      await audit(tx, context, 'Professional', resourceId, 'professional.deleted');
+      return { success: true };
+    });
+  }
 }
 
 /** Membership entry point: permissions are enforced before shared operations run. */
@@ -185,6 +231,10 @@ export class CatalogService extends CatalogOperations {
     requirePermission(context, 'services.manage');
     return super.updateService(context, id, input);
   }
+  override async deleteService(context: TenantContext, id: string) {
+    requirePermission(context, 'services.manage');
+    return super.deleteService(context, id);
+  }
   override async createProfessional(context: TenantContext, input: unknown) {
     requirePermission(context, 'professionals.manage');
     return super.createProfessional(context, input);
@@ -192,5 +242,9 @@ export class CatalogService extends CatalogOperations {
   override async updateProfessional(context: TenantContext, id: string, input: unknown) {
     requirePermission(context, 'professionals.manage');
     return super.updateProfessional(context, id, input);
+  }
+  override async deleteProfessional(context: TenantContext, id: string) {
+    requirePermission(context, 'professionals.manage');
+    return super.deleteProfessional(context, id);
   }
 }

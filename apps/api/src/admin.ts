@@ -99,16 +99,18 @@ export class AdminService {
       return { success: true };
     });
   }
-  async catalog(actorUserId: string, tenantId: string, resource: 'services' | 'professionals', operation: 'list' | 'create' | 'update', body?: unknown, resourceId?: string) {
+  async catalog(actorUserId: string, tenantId: string, resource: 'services' | 'professionals', operation: 'list' | 'create' | 'update' | 'delete', body?: unknown, resourceId?: string) {
     const actor = await this.tenantActor(actorUserId, tenantId);
     const catalog = new CatalogOperations(this.db);
     if (resource === 'services') {
       if (operation === 'list') return catalog.listServices(actor);
       if (operation === 'create') return catalog.createService(actor, body);
+      if (operation === 'delete') return catalog.deleteService(actor, identifier.parse(resourceId));
       return catalog.updateService(actor, identifier.parse(resourceId), body);
     }
     if (operation === 'list') return catalog.listProfessionals(actor);
     if (operation === 'create') return catalog.createProfessional(actor, body);
+    if (operation === 'delete') return catalog.deleteProfessional(actor, identifier.parse(resourceId));
     return catalog.updateProfessional(actor, identifier.parse(resourceId), body);
   }
   async detail(id: string) {

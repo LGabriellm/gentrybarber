@@ -102,7 +102,7 @@ export class FoundationServices {
   private adminWrite(request: FastifyRequest) {
     z.object({}).strict().parse(request.query);
     if (!request.headers.origin || !this.config.TRUSTED_ORIGINS.includes(request.headers.origin)) throw new AccessError('FORBIDDEN');
-    if (!/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) throw new AccessError('INVALID_INPUT');
+    if (request.method !== 'DELETE' && !/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) throw new AccessError('INVALID_INPUT');
   }
   async adminStats(request: FastifyRequest) {
     await this.requireSuperAdmin(request);
@@ -181,7 +181,7 @@ export class FoundationServices {
     this.adminWrite(request);
     return new AdminService(this.db).location(session.user.id, id, locationId, body);
   }
-  async adminCatalog(request: FastifyRequest, tenantId: string, resource: 'services' | 'professionals', operation: 'list' | 'create' | 'update', body?: unknown, resourceId?: string) {
+  async adminCatalog(request: FastifyRequest, tenantId: string, resource: 'services' | 'professionals', operation: 'list' | 'create' | 'update' | 'delete', body?: unknown, resourceId?: string) {
     const session = await this.requireSuperAdmin(request);
     if (operation === 'list') z.object({}).strict().parse(request.query); else this.adminWrite(request);
     return new AdminService(this.db).catalog(session.user.id, tenantId, resource, operation, body, resourceId);

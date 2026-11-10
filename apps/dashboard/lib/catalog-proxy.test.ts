@@ -102,4 +102,26 @@ describe('catalog proxy body limits', () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ message: 'Não foi possível acessar o serviço. Tente novamente.' });
   });
+
+  it('forwards a DELETE request with resource id to upstream without requiring body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ success: true }, { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const deleteRequest = new Request('http://localhost:3001/api/tenants/imperial/services/service-1', {
+      method: 'DELETE', headers: { origin: 'http://localhost:3001' },
+    });
+    const response = await proxyCatalog(deleteRequest, { slug: 'imperial', resource: 'services', id: ['service-1'] });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('rejects a DELETE request without an id', async () => {
+    const fetchMock = upstream();
+    const deleteRequest = new Request('http://localhost:3001/api/tenants/imperial/services', {
+      method: 'DELETE', headers: { origin: 'http://localhost:3001' },
+    });
+    const response = await proxyCatalog(deleteRequest, { slug: 'imperial', resource: 'services' });
+    expect(response.status).toBe(405);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

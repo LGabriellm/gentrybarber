@@ -6,4 +6,4 @@ type Context = { params: Promise<CatalogRouteParams> };
 async function handle(request: Request, context: Context) {
   return proxyCatalog(request, await context.params);
 }
-export { handle as GET, handle as POST, handle as PATCH };
+export { handle as GET, handle as POST, handle as PATCH, handle as DELETE };
